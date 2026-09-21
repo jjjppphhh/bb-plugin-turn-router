@@ -5,12 +5,14 @@ import { registerComposer,mountComposerScripts,findComposer } from './composer-a
 import { defaults,type Settings } from './shared-settings';
 import { BENCHMARK,EFFORTS } from './benchmarks';
 import './autorouter.css';
+const formatModel=(model:string)=>model.replace('gpt-','').replace(/(^|-)([a-z])/g,(_match,prefix:string,letter:string)=>`${prefix}${letter.toUpperCase()}`);
+const formatEffort=(effort:string)=>({low:'Low',medium:'Medium',high:'High',xhigh:'Extra High',max:'Max',ultra:'Ultra'}[effort]??effort);
 export function CostTable(){
   const families=[...new Set(BENCHMARK.rows.map(row=>row.family))];
   return <section className="turn-router-costs" aria-label="Benchmark cost table">
     <p>Estimated cost per benchmark task · Artificial Analysis Intelligence Index v4.3.2 · snapshot 21 Sep 2026</p>
-    <div className="turn-router-costs-scroll"><table><thead><tr><th>Model</th>{EFFORTS.map(effort=><th key={effort}>{effort}</th>)}</tr></thead>
-      <tbody>{families.map(family=><tr key={family}><th>{family.replace('gpt-','')}</th>{EFFORTS.map(effort=>{
+    <div className="turn-router-costs-scroll"><table><thead><tr><th>Model</th>{EFFORTS.map(effort=><th key={effort}>{formatEffort(effort)}</th>)}</tr></thead>
+      <tbody>{families.map(family=><tr key={family}><th>{formatModel(family)}</th>{EFFORTS.map(effort=>{
         const row=BENCHMARK.rows.find(item=>item.family===family&&item.reasoningLevel===effort);
         return <td key={effort} title={row?`Index score ${row.score}`:'Not measured'}>{row?`$${row.costPerTask.toFixed(2)}`:'—'}</td>;
       })}</tr>)}</tbody></table></div>
@@ -85,10 +87,10 @@ export function RoutingControl(){
     });
     return()=>{mounted=false;epoch.current++;release();};
   },[key]);
-  const selectedLabel=selection&&`${selection.model.replace('gpt-','')} · ${selection.reasoningLevel}`;
+  const selectedLabel=selection&&`${formatModel(selection.model)} · ${formatEffort(selection.reasoningLevel)}`;
   return <div ref={anchor} className="turn-router-status" role="status" aria-live="polite">
     <span>{busy?'Choosing model and reasoning…':notice||(enabled?`Auto · ${selectedLabel??'model and reasoning adapt each turn'}`:selectedLabel??'')}</span>
-    {delegate&&<span className="turn-router-delegate"><button type="button" onClick={async()=>{try{const opened=await rpc.call('openSideThread',{parentThreadId:delegate.parentThreadId,text:delegate.text,selection:{model:delegate.model,reasoningLevel:delegate.reasoningLevel}});setDelegate(null);navigate.toThread(opened.threadId);}catch{setNotice('Could not open the side thread. Your draft is unchanged.');}}}>Open in {delegate.model.replace('gpt-','')} · {delegate.reasoningLevel}</button><button type="button" onClick={async()=>{setDelegate(null);await composer.experimental_submit({experimental_data:{routed:true,delegated:false}});}}>Keep in this thread</button></span>}
+    {delegate&&<span className="turn-router-delegate"><button type="button" onClick={async()=>{try{const opened=await rpc.call('openSideThread',{parentThreadId:delegate.parentThreadId,text:delegate.text,selection:{model:delegate.model,reasoningLevel:delegate.reasoningLevel}});setDelegate(null);navigate.toThread(opened.threadId);}catch{setNotice('Could not open the side thread. Your draft is unchanged.');}}}>Open in {formatModel(delegate.model)} · {formatEffort(delegate.reasoningLevel)}</button><button type="button" onClick={async()=>{setDelegate(null);await composer.experimental_submit({experimental_data:{routed:true,delegated:false}});}}>Keep in This Thread</button></span>}
   </div>;
 }
 function RouterSettings(){

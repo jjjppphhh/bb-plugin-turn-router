@@ -24,7 +24,7 @@ it('applies a same-provider selection before submitting through the native compo
  expect(mock.api.experimental_setSelection.mock.calls).toContainEqual([{model:'gpt-5.6-luna',reasoningLevel:'medium'}]);
  const applied=mock.api.experimental_setSelection.mock.calls.findIndex((call:any[])=>call[0]?.model==='gpt-5.6-luna');
  expect(mock.api.experimental_submit.mock.invocationCallOrder[0]).toBeGreaterThan(mock.api.experimental_setSelection.mock.invocationCallOrder[applied]);
- expect(ui.getByRole('status').textContent).toBe('Auto · 5.6-luna · medium');
+ expect(ui.getByRole('status').textContent).toBe('Auto · 5.6-Luna · Medium');
  expect(mock.api.setInputLock).toHaveBeenLastCalledWith(false);
 });
 it('leaves the draft intact if classification fails',async()=>{
@@ -65,12 +65,12 @@ it('does not overwrite a manual selection made while classification is pending',
 it('offers a lower-model side thread without sending or changing the main thread',async()=>{
  mock.route.mockResolvedValueOnce({model:'gpt-6-astra',reasoningLevel:'high',reason:'Keep context.',source:'retained',score:51,estimatedCost:1.73,delegate:{model:'gpt-5.6-luna',reasoningLevel:'low',reason:'Bounded task.'}});
  const ui=mount();fireEvent.click(ui.getByLabelText('Send'));
- await waitFor(()=>expect(ui.getByRole('button',{name:'Open in 5.6-luna · low'})).toBeTruthy());
+ await waitFor(()=>expect(ui.getByRole('button',{name:'Open in 5.6-Luna · Low'})).toBeTruthy());
  expect(mock.api.experimental_submit).not.toHaveBeenCalled();
- mock.route.mockResolvedValueOnce({threadId:'side-thread'});fireEvent.click(ui.getByRole('button',{name:'Open in 5.6-luna · low'}));
+ mock.route.mockResolvedValueOnce({threadId:'side-thread'});fireEvent.click(ui.getByRole('button',{name:'Open in 5.6-Luna · Low'}));
  await waitFor(()=>expect(mock.toThread).toHaveBeenCalledWith('side-thread'));
 });
 it('shows Astra and its measured costs in the settings cost table',()=>{
- const ui=render(<CostTable/>);expect(ui.getByRole('columnheader',{name:'6-astra'})).toBeTruthy();
+ const ui=render(<CostTable/>);expect(ui.getByRole('columnheader',{name:'6-Astra'})).toBeTruthy();
  expect(ui.getByText('$0.82')).toBeTruthy();expect(ui.getByText('$3.26')).toBeTruthy();
 });

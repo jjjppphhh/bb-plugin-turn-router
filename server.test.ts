@@ -34,6 +34,7 @@ describe('server routing boundaries',()=>{
   h.bb.sdk.threads.timeline.mockResolvedValue({rows:[{kind:'conversation',role:'assistant',text:'The implementation is complete.'}],pendingTodos:null});
   const route=await api.route({...input,current:{model:'gpt-6-astra',reasoningLevel:'high'},text:'Fix the typo in that heading.'});
   expect(route.delegate).toMatchObject({model:'gpt-5.6-luna'});
+  expect(Object.keys(route.delegate).sort()).toEqual(['model','reason','reasoningLevel']);
   const cached=await api.route({...input,current:{model:'gpt-6-astra',reasoningLevel:'high'},text:'Fix the typo in that heading.'});
   expect(cached.delegate).toEqual(route.delegate);
   expect(await api.openSideThread({parentThreadId:'thread',text:'Fix the typo in that heading.',selection:{model:route.delegate.model,reasoningLevel:route.delegate.reasoningLevel}})).toEqual({threadId:'side-thread'});

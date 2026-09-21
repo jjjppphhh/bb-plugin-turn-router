@@ -65,7 +65,7 @@ export default async function plugin(bb:BbPluginApi) {
         ? chooseRoute({candidates,rating,premium:config.premium}) : undefined;
       const currentScore=BENCHMARK.rows.find(row=>row.family===input.current.model&&row.reasoningLevel===input.current.reasoningLevel)?.score;
       const delegate=delegated&&currentScore!==undefined&&delegated.score!==null&&delegated.score<currentScore
-        ? {...delegated,reason:`${delegated.reason} Open separately to keep this thread's working context intact.`} : undefined;
+        ? {model:delegated.model,reasoningLevel:delegated.reasoningLevel,reason:`${delegated.reason} Open separately to keep this thread's working context intact.`} : undefined;
       const routed:RoutedRoute=delegate?{...result,delegate}:result;
       if (cache.size>100) cache.clear();cache.set(key,{expires:Date.now()+30000,route:routed});
       bb.log.info(`Route ${input.threadId??'new'}: ${rating.kind} ${rating.complexity}/100 -> ${result.model}/${result.reasoningLevel}`);

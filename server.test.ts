@@ -6,7 +6,7 @@ function harness(){
  let handlers:any;const kv=new Map();const logs:string[]=[];
  const model=(name:string)=>({model:name,supportedReasoningEfforts:['low','medium','high','xhigh','max'].map(reasoningEffort=>({reasoningEffort}))});
  const bb:any={settings:{define:()=>({get:async()=>({})})},storage:{kv:{get:async(k:string)=>kv.get(k),set:async(k:string,v:any)=>kv.set(k,v)}},rpc:{register:(_:unknown,h:unknown)=>{handlers=h;}},cli:{register:()=>{}},log:{info:(s:string)=>logs.push(s)},sdk:{
- threads:{get:vi.fn(async()=>({id:'thread',providerId:'codex',status:'idle',environmentId:'env',title:'Existing task'})),timeline:vi.fn(async()=>({rows:[],pendingTodos:null}))},
+ threads:{get:vi.fn(async()=>({id:'thread',projectId:'project',providerId:'codex',status:'idle',environmentId:'env',title:'Existing task'})),timeline:vi.fn(async()=>({rows:[],pendingTodos:null})),spawn:vi.fn(async()=>({id:'side-thread'}))},
  providers:{models:vi.fn(async()=>({modelLoadError:null,models:['gpt-6-astra','gpt-5.6-sol','gpt-5.6-luna'].map(model)}))},
  }};
  return {bb,logs,start:async()=>{await plugin(bb);return handlers;}};
@@ -27,6 +27,15 @@ describe('server routing boundaries',()=>{
   h.bb.sdk.threads.timeline.mockResolvedValue({rows:[{kind:'conversation',role:'assistant',text:'The implementation is complete.'}],pendingTodos:null});
   const result=await api.route({...input,text:'Fix the typo in that heading.'});
   expect(result).toMatchObject({model:'gpt-5.6-sol'});
+ });
+ it('offers and opens an isolated lower-model side thread for a bounded follow-up',async()=>{
+  const h=harness(),api=await h.start();
+  h.bb.sdk.threads.get.mockResolvedValue({id:'thread',projectId:'project',providerId:'codex',status:'idle',environmentId:'env',title:'Existing task'});
+  h.bb.sdk.threads.timeline.mockResolvedValue({rows:[{kind:'conversation',role:'assistant',text:'The implementation is complete.'}],pendingTodos:null});
+  const route=await api.route({...input,current:{model:'gpt-6-astra',reasoningLevel:'high'},text:'Fix the typo in that heading.'});
+  expect(route.delegate).toMatchObject({model:'gpt-5.6-luna'});
+  expect(await api.openSideThread({parentThreadId:'thread',text:'Fix the typo in that heading.',selection:{model:route.delegate.model,reasoningLevel:route.delegate.reasoningLevel}})).toEqual({threadId:'side-thread'});
+  expect(h.bb.sdk.threads.spawn).toHaveBeenCalledWith(expect.objectContaining({parentThreadId:'thread',model:route.delegate.model,reasoningLevel:route.delegate.reasoningLevel,providerId:'codex',visibility:'visible'}));
  });
  it('fails back safely on timeout or missing authentication',async()=>{
   const api=await harness().start();vi.mocked(classify).mockRejectedValue(new Error('timeout'));expect(await api.route(input)).toMatchObject({...input.current,source:'retained'});

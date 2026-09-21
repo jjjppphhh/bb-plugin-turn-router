@@ -1,5 +1,5 @@
 import { useEffect,useRef,useState } from 'react';
-import { definePluginApp,useComposer,useComposerView,useRpc } from '@get-bb/plugin-sdk/app';
+import { definePluginApp,useBbNavigate,useComposer,useComposerView,useRpc } from '@get-bb/plugin-sdk/app';
 import type { rpcContract } from './server';
 import { registerComposer,mountComposerScripts,findComposer } from './composer-adapter';
 import { defaults,type Settings } from './shared-settings';
@@ -17,14 +17,15 @@ export function CostTable(){
   </section>;
 }
 export function RoutingControl(){
-  const composer=useComposer(),view=useComposerView(),rpc=useRpc<typeof rpcContract>();
+  const composer=useComposer(),view=useComposerView(),rpc=useRpc<typeof rpcContract>(),navigate=useBbNavigate();
   const key=`turn-router:${view.scope.kind==='thread'?view.scope.threadId:'new'}`;
   const [enabled,setEnabled]=useState(()=>localStorage.getItem(key)!=='off');
   const [busy,setBusy]=useState(false),[notice,setNotice]=useState('');
   const [selection,setSelection]=useState<{model:string;reasoningLevel:string}|null>(null);
-  const anchor=useRef<HTMLSpanElement>(null),live=useRef({composer,view,enabled,busy}),epoch=useRef(0);
+  const [delegate,setDelegate]=useState<{model:string;reasoningLevel:string;reason:string;text:string;parentThreadId:string}|null>(null);
+  const anchor=useRef<HTMLDivElement>(null),live=useRef({composer,view,enabled,busy}),epoch=useRef(0);
   live.current={composer,view,enabled,busy};
-  useEffect(()=>{setEnabled(localStorage.getItem(key)!=='off');setNotice('');},[key]);
+  useEffect(()=>{setEnabled(localStorage.getItem(key)!=='off');setNotice('');setDelegate(null);},[key]);
   useEffect(()=>{
     const generation=++epoch.current;
     const form=anchor.current&&findComposer(anchor.current);if(!form)return;
@@ -63,6 +64,10 @@ export function RoutingControl(){
           });
           if(!valid())return;
           if(!live.current.enabled)throw new Error('Manual selection kept. Send again to use your chosen model.');
+          if(route.delegate&&snapshot.scope.kind==='thread'){
+            api.setInputLock(false);setDelegate({...route.delegate,text:originalText,parentThreadId:snapshot.scope.threadId});
+            setNotice('This bounded follow-up can run separately without changing the main thread.');return;
+          }
           if(live.current.view.run.isRunning)throw new Error('A turn started while rating. Send again to steer its existing model.');
           if(live.current.composer.text!==originalText)throw new Error('The draft changed while rating. Send again to rate the updated message.');
           const applied=await api.experimental_setSelection({model:route.model,reasoningLevel:route.reasoningLevel as typeof selected.reasoningLevel});
@@ -81,7 +86,10 @@ export function RoutingControl(){
     return()=>{mounted=false;epoch.current++;release();};
   },[key]);
   const selectedLabel=selection&&`${selection.model.replace('gpt-','')} · ${selection.reasoningLevel}`;
-  return <span ref={anchor} className="turn-router-status" role="status" aria-live="polite">{busy?'Choosing model and reasoning…':notice||(enabled?`Auto · ${selectedLabel??'model and reasoning adapt each turn'}`:selectedLabel??'')}</span>;
+  return <div ref={anchor} className="turn-router-status" role="status" aria-live="polite">
+    <span>{busy?'Choosing model and reasoning…':notice||(enabled?`Auto · ${selectedLabel??'model and reasoning adapt each turn'}`:selectedLabel??'')}</span>
+    {delegate&&<span className="turn-router-delegate"><button type="button" onClick={async()=>{try{const opened=await rpc.call('openSideThread',{parentThreadId:delegate.parentThreadId,text:delegate.text,selection:{model:delegate.model,reasoningLevel:delegate.reasoningLevel}});setDelegate(null);navigate.toThread(opened.threadId);}catch{setNotice('Could not open the side thread. Your draft is unchanged.');}}}>Open in {delegate.model.replace('gpt-','')} · {delegate.reasoningLevel}</button><button type="button" onClick={async()=>{setDelegate(null);await composer.experimental_submit({experimental_data:{routed:true,delegated:false}});}}>Keep in this thread</button></span>}
+  </div>;
 }
 function RouterSettings(){
   const rpc=useRpc<typeof rpcContract>();const [value,setValue]=useState<Settings>(defaults),[status,setStatus]=useState('');

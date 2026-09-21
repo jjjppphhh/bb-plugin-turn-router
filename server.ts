@@ -7,7 +7,8 @@ import { classifierPrompt, obviousRating, explicitSelection } from './router';
 import { classify } from './classifier';
 import { compactContext,hasPriorAssistantResponse } from './context';
 const selectionSchema=z.object({model:z.string().max(150),reasoningLevel:z.string().max(30)}).strict();
-const routeSchema=selectionSchema.extend({reason:z.string(),source:z.string(),score:z.number().nullable(),estimatedCost:z.number().nullable()});
+const delegateSchema=selectionSchema.extend({reason:z.string().min(1).max(400)}).strict();
+const routeSchema=selectionSchema.extend({reason:z.string(),source:z.string(),score:z.number().nullable(),estimatedCost:z.number().nullable(),delegate:delegateSchema.optional()});
 export const inputSchema=z.object({
   text:z.string().min(1).max(30000),threadId:z.string().nullable(),environmentId:z.string().nullable(),hostId:z.string().nullable(),
   current:selectionSchema,providerId:z.literal('codex'),attachments:z.number().int().min(0).max(100),
@@ -16,6 +17,7 @@ export const rpcContract=defineRpcContract({
   getSettings:{input:z.null(),output:settingsSchema},
   updateSettings:{input:settingsSchema,output:settingsSchema},
   route:{input:inputSchema,output:routeSchema},
+  openSideThread:{input:z.object({parentThreadId:z.string().min(1).max(200),text:z.string().min(1).max(30000),selection:selectionSchema}).strict(),output:z.object({threadId:z.string()}).strict()},
 });
 export default async function plugin(bb:BbPluginApi) {
   const secrets=bb.settings.define({apiKey:{type:'string',label:'Optional classifier API key',secret:true}});
@@ -58,9 +60,26 @@ export default async function plugin(bb:BbPluginApi) {
         finally {activeClassifiers--;}
       }
       const result=chooseRoute({candidates,rating,premium:config.premium,current:input.current,contextCharacters:context.characters,established});
+      const delegated=established&&input.threadId&&rating.confidence>=.8&&['tweak','question'].includes(rating.kind)
+        ? chooseRoute({candidates,rating,premium:config.premium}) : undefined;
+      const currentScore=BENCHMARK.rows.find(row=>row.family===input.current.model&&row.reasoningLevel===input.current.reasoningLevel)?.score;
+      const delegate=delegated&&currentScore!==undefined&&delegated.score!==null&&delegated.score<currentScore
+        ? {...delegated,reason:`${delegated.reason} Open separately to keep this thread's working context intact.`} : undefined;
       if (cache.size>100) cache.clear();cache.set(key,{expires:Date.now()+30000,route:result});
       bb.log.info(`Route ${input.threadId??'new'}: ${rating.kind} ${rating.complexity}/100 -> ${result.model}/${result.reasoningLevel}`);
-      return result;
+      return delegate?{...result,delegate}:result;
+    },
+    openSideThread:async({parentThreadId,text,selection})=>{
+      const parent=await bb.sdk.threads.get({threadId:parentThreadId});
+      if(parent.providerId!=='codex'||parent.status==='active')throw new Error('Wait for the current thread to become idle before opening a side thread.');
+      const models=await bb.sdk.providers.models(parent.environmentId?{providerId:'codex',environmentId:parent.environmentId}:{providerId:'codex'});
+      const selected=models.models.find(model=>model.model===selection.model&&model.supportedReasoningEfforts.some(effort=>effort.reasoningEffort===selection.reasoningLevel));
+      if(!selected)throw new Error('That side-thread model is no longer available.');
+      const timeline=await bb.sdk.threads.timeline({threadId:parentThreadId,segmentLimit:'8',includeNestedRows:'true'});
+      const brief=compactContext(timeline.rows,parent.title ?? '',timeline.pendingTodos?.items.filter(todo=>todo.status!=='completed').map(todo=>todo.text)).text.slice(-4000);
+      const thread=await bb.sdk.threads.spawn({projectId:parent.projectId,parentThreadId,environment:parent.environmentId?{type:'reuse',environmentId:parent.environmentId}:{type:'project-default'},providerId:'codex',model:selection.model,reasoningLevel:selection.reasoningLevel as 'low'|'medium'|'high'|'xhigh'|'max'|'ultra',visibility:'visible',title:`Side task · ${text.replace(/\s+/g,' ').slice(0,72)}`,prompt:`Work only on this bounded task in a separate side thread. Return a concise result here; do not try to merge it into the parent thread.\n\nTask:\n${text}\n\nCompact parent context (reference only):\n${brief}`});
+      bb.log.info(`Opened side thread ${thread.id} from ${parentThreadId} with ${selection.model}/${selection.reasoningLevel}`);
+      return {threadId:thread.id};
     },
   });
   bb.cli.register({name:'turn-router',summary:'Inspect per-turn Codex routing',commands:[{name:'status',summary:'Show policy and benchmark provenance',usage:'bb turn-router status'}],async run(argv){

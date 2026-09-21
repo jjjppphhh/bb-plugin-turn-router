@@ -32,13 +32,15 @@ async function openPicker(form:HTMLFormElement,search=false,providers=true){
 it.each([false,true])('offers Auto with search=%s; manual models override it and reopen stays manual',async(search)=>{
  const f=fixture(),popup=await openPicker(f.form,search);
  const auto=popup.querySelector<HTMLButtonElement>('[data-turn-router-toggle]')!;
- expect(auto.textContent).toBe('Auto ✓');expect(auto.parentElement).toBe(popup.querySelector('.providers'));
+ expect(auto.textContent).toBe('Auto');expect(auto.parentElement).toBe(popup.querySelector('.providers'));
  auto.click();expect(f.state.on).toBe(true); // Selecting Auto twice does not turn it off.
  popup.querySelector<HTMLButtonElement>('#picker-opt-1')!.click();expect(f.manual).toHaveBeenCalledOnce();expect(f.state.on).toBe(false);
  expect(auto.getAttribute('aria-pressed')).toBe('false');
+ expect(f.form.querySelector('.turn-router-trigger-label')?.hasAttribute('hidden')).toBe(true);
  popup.remove();await new Promise(r=>setTimeout(r,0));
  const reopened=await openPicker(f.form,search);const again=reopened.querySelector<HTMLButtonElement>('[data-turn-router-toggle]')!;
  expect(again.getAttribute('aria-pressed')).toBe('false');again.click();expect(f.state.on).toBe(true);
+ expect(f.form.querySelector('.turn-router-trigger-label')?.textContent).toBe('Auto');
  cleanup();expect(document.querySelector('[data-turn-router-toggle]')).toBeNull();expect(reopened.querySelector('.turn-router-header')).toBeNull();
 });
 it('supports one provider and manual reasoning without search',async()=>{

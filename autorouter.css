@@ -2,6 +2,8 @@
 .turn-router-toggle { margin-left:auto; flex-shrink:0; align-self:center; border:1px solid var(--border); border-radius:6px; background:var(--background); color:var(--muted-foreground); padding:2px 7px; font-size:11px; line-height:20px; cursor:pointer; z-index:2; }
 .turn-router-toggle[aria-pressed="true"] { color:var(--foreground); background:var(--accent); }
 .turn-router-toggle:focus-visible { outline:2px solid var(--ring); outline-offset:2px; }
+.turn-router-model-trigger { position:relative; }
+.turn-router-trigger-label { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:0 0.5rem; background:var(--background); color:var(--foreground); pointer-events:none; }
 .turn-router-status { display:block; color:var(--muted-foreground); font-size:11px; padding:2px 8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .turn-router-status:empty { display:none; }
 .turn-router-settings { display:flex; flex-direction:column; gap:14px; font-size:13px; }

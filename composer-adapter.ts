@@ -16,22 +16,45 @@ export function findComposer(anchor: Element): HTMLFormElement | null {
 export function bindComposer(form: HTMLFormElement,binding: ComposerBinding):()=>void {
   const doc=form.ownerDocument;
   let toggle:HTMLButtonElement|null=null, popup:HTMLElement|null=null, header:HTMLElement|null=null;
+  let pickerTrigger:HTMLElement|null=null, triggerLabel:HTMLSpanElement|null=null;
   let pending=false,disposed=false;
-  const cleanupButton=()=>{toggle?.remove();toggle=null;header?.classList.remove('turn-router-header');header=null;popup=null;};
+  const cleanupPopup=()=>{
+    toggle?.remove();toggle=null;header?.classList.remove('turn-router-header');header=null;popup=null;
+  };
+  const cleanupButton=()=>{
+    cleanupPopup();
+    triggerLabel?.remove();triggerLabel=null;pickerTrigger?.classList.remove('turn-router-model-trigger');pickerTrigger=null;
+  };
   const sync=()=>{
     if(disposed)return;
     if(activeForm!==form){cleanupButton();return;}
     // Radix links the native trigger to its portal, with or without model search.
-    const trigger=form.querySelector<HTMLElement>('[aria-label^="Provider, model and reasoning"][aria-expanded="true"]');
+    const trigger=form.querySelector<HTMLElement>('[aria-label^="Provider, model and reasoning"]');
+    // Keep Auto visible in the native picker trigger while it is selected.
+    // The native aria-label stays intact so the trigger remains accessible.
+    if (trigger!==pickerTrigger) {
+      triggerLabel?.remove();pickerTrigger?.classList.remove('turn-router-model-trigger');
+      pickerTrigger=trigger??null;triggerLabel=null;
+      if (pickerTrigger) {
+        pickerTrigger.classList.add('turn-router-model-trigger');
+        triggerLabel=doc.createElement('span');triggerLabel.className='turn-router-trigger-label';
+        pickerTrigger.append(triggerLabel);
+      }
+    }
+    if (triggerLabel) {
+      if (triggerLabel.textContent!=='Auto') triggerLabel.textContent='Auto';
+      triggerLabel.hidden=!binding.enabled();
+    }
+    if (trigger?.getAttribute('aria-expanded')!=='true') { cleanupPopup(); return; }
     const id=trigger?.getAttribute('aria-controls');
     const next=id?doc.getElementById(id):null;
     const model=next?.querySelector<HTMLElement>('button[id*="-opt-"]');
     const modelHeading=model?.parentElement?.firstElementChild as HTMLElement|null;
     const providerHeader=Array.from(next?.children??[]).find(child=>child.querySelector(':scope > button[title]')) as HTMLElement|undefined;
     const nextHeader=providerHeader??modelHeading;
-    if(!next||!nextHeader){cleanupButton();return;}
+    if(!next||!nextHeader){cleanupPopup();return;}
     if(popup!==next||header!==nextHeader||!toggle?.isConnected){
-      cleanupButton();popup=next;header=nextHeader;header.classList.add('turn-router-header');
+      cleanupPopup();popup=next;header=nextHeader;header.classList.add('turn-router-header');
       toggle=doc.createElement('button');toggle.type='button';toggle.className='turn-router-toggle';toggle.dataset.turnRouterToggle='';
       toggle.addEventListener('pointerdown',e=>e.stopPropagation());
       // Auto is a selection, not an independent switch. Native selections leave it.
@@ -39,7 +62,7 @@ export function bindComposer(form: HTMLFormElement,binding: ComposerBinding):()=
       header.append(toggle);
     }
     const enabled=binding.enabled();
-    const label=binding.busy()?'Rating…':enabled?'Auto ✓':'Auto';
+    const label=binding.busy()?'Rating…':'Auto';
     if(toggle!.textContent!==label)toggle!.textContent=label;
     toggle!.setAttribute('aria-pressed',String(enabled));
     toggle!.setAttribute('aria-label','Auto: choose model and reasoning for each turn');

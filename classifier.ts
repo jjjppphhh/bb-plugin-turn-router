@@ -64,8 +64,16 @@ export const jevQuestions = {
   ]),
 } as const;
 
-const toHundred = (value: number) => Math.round(value * 25);
 const level = (value: number) => value < 25 ? 'low' : value < 60 ? 'moderate' : value < 85 ? 'high' : 'very high';
+const jevContractError=(name:string,message:string)=>Object.assign(new Error(message),{name});
+const conservativeScore=(answer:z.infer<typeof scoreAnswerSchema>,quantile=.75)=>{
+  let cumulative=0;
+  for(let score=0;score<=4;score++){
+    cumulative+=answer.probabilities[String(score) as keyof typeof answer.probabilities];
+    if(cumulative+1e-9>=quantile)return score*25;
+  }
+  return 100;
+};
 
 export async function classifyWithJev(input: ClassifierInput, settings: Settings, apiKey: string, fetcher: typeof fetch = globalThis.fetch) {
   const client = new TypeSafeClient({
@@ -82,20 +90,25 @@ export async function classifyWithJev(input: ClassifierInput, settings: Settings
     },questions:jevQuestions,
   },{signal:AbortSignal.timeout(settings.timeoutMs)});
   const value=jevResponseSchema.parse(raw);
-  if(value.model!==settings.jevModel)throw new Error(`Jev returned unexpected model ${value.model}.`);
+  if(value.model!==settings.jevModel)throw jevContractError('JevModelDriftError',`Jev returned unexpected model ${value.model}.`);
   const kindProbabilities=value.answers.kind.probabilities;
   const mostLikely=Object.entries(kindProbabilities).sort((a,b)=>b[1]-a[1])[0]?.[0];
-  if(mostLikely!==value.answers.kind.choice)throw new Error('Jev returned an inconsistent task-kind choice.');
+  if(mostLikely!==value.answers.kind.choice)throw jevContractError('JevKindConsistencyError','Jev returned an inconsistent task-kind choice.');
   for(const answer of [value.answers.complexity,value.answers.uncertainty,value.answers.risk]){
     const expected=Object.entries(answer.probabilities).reduce((sum,[key,probability])=>sum+Number(key)*probability,0);
-    if(Math.abs(expected-answer.score)>.015)throw new Error('Jev returned an inconsistent score distribution.');
+    // The API rounds each displayed probability independently. Across five
+    // weighted bins that can move the reconstructed expectation by about .05.
+    if(Math.abs(expected-answer.score)>.075)throw jevContractError('JevScoreConsistencyError','Jev returned an inconsistent score distribution.');
   }
-  const complexity=toHundred(value.answers.complexity.score);
-  const uncertainty=toHundred(value.answers.uncertainty.score);
-  const risk=toHundred(value.answers.risk.score);
-  const confidence=Math.min(value.answers.kind.confidence,value.answers.complexity.confidence,value.answers.uncertainty.confidence,value.answers.risk.confidence);
+  // Route on the upper quartile of each discrete distribution. This preserves
+  // a meaningful high-impact tail instead of averaging it away, and avoids
+  // treating adjacent-level entropy as a reason to discard the whole result.
+  const complexity=conservativeScore(value.answers.complexity);
+  const uncertainty=conservativeScore(value.answers.uncertainty);
+  const risk=conservativeScore(value.answers.risk);
+  const confidence=.75;
   return ratingSchema.parse({
-    kind:value.answers.kind.choice,complexity,uncertainty,risk,confidence,
+    kind:value.answers.kind.choice,complexity,uncertainty,risk,confidence,kindConfidence:value.answers.kind.confidence,
     reason:`Jev rated this ${value.answers.kind.choice} as ${level(complexity)} complexity, ${level(uncertainty)} uncertainty, and ${level(risk)} risk.`,
   });
 }

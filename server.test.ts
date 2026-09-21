@@ -5,7 +5,7 @@ vi.mock('./classifier',async original=>({...await original<typeof import('./clas
 function harness(){
  let handlers:any;const kv=new Map();const logs:string[]=[];
  const model=(name:string)=>({model:name,supportedReasoningEfforts:['low','medium','high','xhigh','max'].map(reasoningEffort=>({reasoningEffort}))});
- const bb:any={settings:{define:()=>({get:async()=>({})})},storage:{kv:{get:async(k:string)=>kv.get(k),set:async(k:string,v:any)=>kv.set(k,v)}},rpc:{register:(_:unknown,h:unknown)=>{handlers=h;}},cli:{register:()=>{}},log:{info:(s:string)=>logs.push(s)},sdk:{
+ const bb:any={settings:{define:()=>({get:async()=>({})})},storage:{kv:{get:async(k:string)=>kv.get(k),set:async(k:string,v:any)=>kv.set(k,v)}},rpc:{register:(_:unknown,h:unknown)=>{handlers=h;}},cli:{register:()=>{}},log:{info:(s:string)=>logs.push(s),warn:(s:string)=>logs.push(s)},sdk:{
  threads:{get:vi.fn(async()=>({id:'thread',projectId:'project',providerId:'codex',status:'idle',environmentId:'env',title:'Existing task'})),timeline:vi.fn(async()=>({rows:[],pendingTodos:null})),spawn:vi.fn(async()=>({id:'side-thread'}))},
  providers:{models:vi.fn(async()=>({modelLoadError:null,models:['gpt-6-astra','gpt-5.6-sol','gpt-5.6-luna'].map(model)}))},
  }};
@@ -39,13 +39,21 @@ describe('server routing boundaries',()=>{
   expect(await api.openSideThread({parentThreadId:'thread',text:'Fix the typo in that heading.',selection:{model:route.delegate.model,reasoningLevel:route.delegate.reasoningLevel}})).toEqual({threadId:'side-thread'});
   expect(h.bb.sdk.threads.spawn).toHaveBeenCalledWith(expect.objectContaining({parentThreadId:'thread',model:route.delegate.model,reasoningLevel:route.delegate.reasoningLevel,providerId:'codex',visibility:'visible'}));
  });
+ it('requires task-kind confidence before offering a side thread',async()=>{
+  const h=harness(),api=await h.start();
+  h.bb.sdk.threads.timeline.mockResolvedValue({rows:[{kind:'conversation',role:'assistant',text:'The implementation is complete.'}],pendingTodos:null});
+  vi.mocked(classify).mockResolvedValue({kind:'tweak',complexity:0,uncertainty:25,risk:0,confidence:.75,kindConfidence:.4,reason:'Ambiguous kind.'});
+  const route=await api.route({...input,current:{model:'gpt-6-astra',reasoningLevel:'high'},text:'Polish this existing wording a little.'});
+  expect(route.delegate).toBeUndefined();
+ });
  it('does not spawn a side thread while its parent is starting',async()=>{
   const h=harness(),api=await h.start();h.bb.sdk.threads.get.mockResolvedValue({id:'thread',projectId:'project',providerId:'codex',status:'starting',environmentId:'env'});
   await expect(api.openSideThread({parentThreadId:'thread',text:'A bounded task',selection:{model:'gpt-5.6-luna',reasoningLevel:'low'}})).rejects.toThrow('idle');
   expect(h.bb.sdk.threads.spawn).not.toHaveBeenCalled();
  });
  it('fails back safely on timeout or missing authentication',async()=>{
-  const api=await harness().start();vi.mocked(classify).mockRejectedValue(new Error('timeout'));expect(await api.route(input)).toMatchObject({...input.current,source:'retained'});
+  const h=harness(),api=await h.start();vi.mocked(classify).mockRejectedValue(Object.assign(new Error('secret response body'),{status:529,code:'overloaded'}));expect(await api.route(input)).toMatchObject({...input.current,source:'retained'});
+  expect(h.logs.join()).toContain('Error HTTP 529 overloaded');expect(h.logs.join()).not.toContain('secret response body');expect(h.logs.join()).not.toContain(input.text);
  });
  it('reuses a rating for duplicate requests but not a changed draft',async()=>{
   const api=await harness().start();vi.mocked(classify).mockResolvedValue({kind:'review',complexity:75,uncertainty:70,risk:50,confidence:.9,reason:'Review.'});

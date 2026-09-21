@@ -10,6 +10,14 @@ const selectionSchema=z.object({model:z.string().max(150),reasoningLevel:z.strin
 const delegateSchema=selectionSchema.extend({reason:z.string().min(1).max(400)}).strict();
 const routeSchema=selectionSchema.extend({reason:z.string(),source:z.string(),score:z.number().nullable(),estimatedCost:z.number().nullable(),delegate:delegateSchema.optional()});
 type RoutedRoute=Route&{delegate?:z.infer<typeof delegateSchema>};
+function classifierFailure(error:unknown):string{
+  if(!error||typeof error!=='object')return 'unknown error';
+  const value=error as {name?:unknown;status?:unknown;code?:unknown};
+  const name=typeof value.name==='string'&&value.name.slice(0,80)||'Error';
+  const status=typeof value.status==='number'?` HTTP ${value.status}`:'';
+  const code=typeof value.code==='string'&&/^[A-Z0-9_-]{1,40}$/i.test(value.code)?` ${value.code}`:'';
+  return `${name}${status}${code}`;
+}
 export const inputSchema=z.object({
   text:z.string().min(1).max(30000),threadId:z.string().nullable(),environmentId:z.string().nullable(),hostId:z.string().nullable(),
   current:selectionSchema,providerId:z.literal('codex'),attachments:z.number().int().min(0).max(100),
@@ -57,18 +65,18 @@ export default async function plugin(bb:BbPluginApi) {
         if (activeClassifiers>=2) return retain('Classifier busy; keeping your current selection.');
         activeClassifiers++;
         try { rating=await classify({text:input.text,context:context.text,attachments:input.attachments},config,(await secrets.get()).apiKey); }
-        catch { return retain('Classifier unavailable; keeping your current model and effort.'); }
+        catch(error) {bb.log.warn(`Classifier ${config.classifier} failed (${classifierFailure(error)}); retaining selection.`);return retain('Classifier unavailable; keeping your current model and effort.'); }
         finally {activeClassifiers--;}
       }
       const result=chooseRoute({candidates,rating,premium:config.premium,current:input.current,contextCharacters:context.characters,established});
-      const delegated=established&&input.threadId&&rating.confidence>=.8&&['tweak','question'].includes(rating.kind)
+      const delegated=established&&input.threadId&&rating.confidence>=.65&&(rating.kindConfidence??rating.confidence)>=.8&&['tweak','question'].includes(rating.kind)
         ? chooseRoute({candidates,rating,premium:config.premium}) : undefined;
       const currentScore=BENCHMARK.rows.find(row=>row.family===input.current.model&&row.reasoningLevel===input.current.reasoningLevel)?.score;
       const delegate=delegated&&currentScore!==undefined&&delegated.score!==null&&delegated.score<currentScore
         ? {...delegated,reason:`${delegated.reason} Open separately to keep this thread's working context intact.`} : undefined;
       const routed:RoutedRoute=delegate?{...result,delegate}:result;
       if (cache.size>100) cache.clear();cache.set(key,{expires:Date.now()+30000,route:routed});
-      bb.log.info(`Route ${input.threadId??'new'} via ${config.classifier}: ${rating.kind} ${rating.complexity}/100 -> ${result.model}/${result.reasoningLevel}`);
+      bb.log.info(`Route ${input.threadId??'new'} via ${config.classifier}: ${rating.kind} ${rating.complexity}/100 confidence ${rating.confidence.toFixed(2)} -> ${result.model}/${result.reasoningLevel}`);
       return routed;
     },
     openSideThread:async({parentThreadId,text,selection})=>{

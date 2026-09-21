@@ -6,7 +6,7 @@ export type Candidate = { model: string; efforts: readonly string[] };
 export type Selection = { model: string; reasoningLevel: string };
 export type Rating = {
   kind: 'tweak' | 'implementation' | 'investigation' | 'architecture' | 'review' | 'question';
-  complexity: number; uncertainty: number; risk: number; confidence: number; reason: string;
+  complexity: number; uncertainty: number; risk: number; confidence: number; kindConfidence?: number; reason: string;
 };
 export type Route = Selection & { reason: string; source: string; score: number | null; estimatedCost: number | null };
 const effortOrder = (effort: string) => EFFORTS.indexOf(effort as Effort);

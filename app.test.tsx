@@ -4,7 +4,7 @@ import {render,fireEvent,waitFor,cleanup} from '@testing-library/react';
 import {beforeEach,afterEach,it,expect,vi} from 'vitest';
 const mock=vi.hoisted(()=>({api:null as any,view:null as any,route:vi.fn()}));
 vi.mock('@get-bb/plugin-sdk/app',()=>({definePluginApp:()=>({}),useComposer:()=>mock.api,useComposerView:()=>mock.view,useRpc:()=>({call:mock.route})}));
-import {RoutingControl} from './app';
+import {RoutingControl,CostTable} from './app';
 import {mountComposerScripts} from './composer-adapter';
 let release=()=>{};
 beforeEach(()=>{
@@ -61,4 +61,8 @@ it('does not overwrite a manual selection made while classification is pending',
  fireEvent.click(ui.getByText('Luna'));finish({model:'gpt-6-astra',reasoningLevel:'max'});
  await waitFor(()=>expect(ui.getByRole('status').textContent).toContain('Manual selection kept'));
  expect(mock.api.experimental_setSelection.mock.calls.some((call:any[])=>call[0]?.model==='gpt-6-astra')).toBe(false);expect(mock.api.experimental_submit).not.toHaveBeenCalled();
+});
+it('shows Astra and its measured costs in the settings cost table',()=>{
+ const ui=render(<CostTable/>);expect(ui.getByRole('columnheader',{name:'6-astra'})).toBeTruthy();
+ expect(ui.getByText('$0.82')).toBeTruthy();expect(ui.getByText('$3.26')).toBeTruthy();
 });

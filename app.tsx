@@ -3,7 +3,19 @@ import { definePluginApp,useComposer,useComposerView,useRpc } from '@get-bb/plug
 import type { rpcContract } from './server';
 import { registerComposer,mountComposerScripts,findComposer } from './composer-adapter';
 import { defaults,type Settings } from './shared-settings';
+import { BENCHMARK,EFFORTS } from './benchmarks';
 import './autorouter.css';
+export function CostTable(){
+  const families=[...new Set(BENCHMARK.rows.map(row=>row.family))];
+  return <section className="turn-router-costs" aria-label="Benchmark cost table">
+    <p>Estimated cost per benchmark task · Artificial Analysis Intelligence Index v4.3.2 · snapshot 21 Sep 2026</p>
+    <div className="turn-router-costs-scroll"><table><thead><tr><th>Model</th>{EFFORTS.map(effort=><th key={effort}>{effort}</th>)}</tr></thead>
+      <tbody>{families.map(family=><tr key={family}><th>{family.replace('gpt-','')}</th>{EFFORTS.map(effort=>{
+        const row=BENCHMARK.rows.find(item=>item.family===family&&item.reasoningLevel===effort);
+        return <td key={effort} title={row?`Index score ${row.score}`:'Not measured'}>{row?`$${row.costPerTask.toFixed(2)}`:'—'}</td>;
+      })}</tr>)}</tbody></table></div>
+  </section>;
+}
 export function RoutingControl(){
   const composer=useComposer(),view=useComposerView(),rpc=useRpc<typeof rpcContract>();
   const key=`turn-router:${view.scope.kind==='thread'?view.scope.threadId:'new'}`;
@@ -79,6 +91,7 @@ function RouterSettings(){
     <label>Classifier<select value={value.classifier} onChange={e=>setValue({...value,classifier:e.target.value as Settings['classifier']})}><option value="luna">Luna · existing Codex sign-in</option><option value="compatible-api">Compatible API · DeepSeek, Kimi or another provider</option></select></label>
     {value.classifier==='luna'?<label>Codex executable<input value={value.codexBinary} onChange={e=>setValue({...value,codexBinary:e.target.value})}/></label>:<><p>Your selected provider receives the draft and a short recent conversation excerpt. Add its key in the secure field above.</p><label>HTTPS API base URL<input value={value.apiBaseUrl} placeholder="https://provider.example/v1" onChange={e=>setValue({...value,apiBaseUrl:e.target.value})}/></label><label>Classifier model ID<input value={value.classifierModel} onChange={e=>setValue({...value,classifierModel:e.target.value})}/></label></>}
     <label>Capability preference: {value.premium}<input type="range" min="0" max="100" value={value.premium} onChange={e=>setValue({...value,premium:Number(e.target.value)})}/></label>
+    <CostTable/>
     <p>Artificial Analysis Intelligence Index v4.3.2, retrieved 21 September 2026. Scores compare general capability; costs are benchmark estimates, not subscription charges. Ultra is available through an explicit request or manual selection only.</p>
     <button type="submit">Save settings</button><span role="status">{status}</span>
   </form>;

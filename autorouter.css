@@ -11,3 +11,10 @@
 .turn-router-settings label { display:flex; flex-direction:column; gap:5px; }
 .turn-router-settings input,.turn-router-settings select,.turn-router-settings button { border:1px solid var(--border); border-radius:6px; padding:6px 9px; background:var(--background); color:var(--foreground); }
 .turn-router-settings p { color:var(--muted-foreground); }
+.turn-router-costs { display:flex; flex-direction:column; gap:6px; }
+.turn-router-costs-scroll { overflow-x:auto; border:1px solid var(--border); border-radius:6px; }
+.turn-router-costs table { width:100%; border-collapse:collapse; font-size:12px; white-space:nowrap; }
+.turn-router-costs th,.turn-router-costs td { padding:6px 8px; text-align:right; border-bottom:1px solid var(--border); }
+.turn-router-costs th:first-child { text-align:left; }
+.turn-router-costs thead th { color:var(--muted-foreground); font-weight:500; }
+.turn-router-costs tbody tr:last-child th,.turn-router-costs tbody tr:last-child td { border-bottom:0; }

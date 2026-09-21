@@ -13,6 +13,7 @@ Routes each **new Codex turn** from BB's native composer. `Auto` is a choice at 
 - Confidence below 0.65, classifier failure, unseen attachments, or active work preserves the current model/effort. No silent provider changes.
 - Match capability demand to measured options, then prefer lower benchmark cost. Complexity also limits effort (medium for simple tasks, high for routine tasks, xhigh/max for demanding work). Premium preference has less effect on simple tasks.
 - The first substantive turn chooses a model family. Later turns keep that family and adjust reasoning effort; Auto only promotes to a stronger family when the current one cannot meet the rated capability demand. It never automatically downgrades a thread's model family.
+- A high-confidence bounded tweak or question may offer a lower-model side thread. The user must choose it explicitly; the visible child receives the draft plus a compact parent-context brief, and nothing is merged back automatically. Editing the draft or manually changing the picker invalidates the offer.
 - Explicit `use Astra high` style requests take precedence. Ultra has no comparable published score and remains an explicit/manual choice. Unmeasured combinations are never assigned fabricated scores.
 
 ## Benchmark provenance
@@ -27,7 +28,7 @@ Requires Plugin SDK 0.4.104. Uses `useComposer().experimental_setSelection()` an
 
 BB has no model-picker extension slot or model-rewriting dispatch hook. A small cleanup-owned content script inserts the Auto choice and intercepts local Enter/send-button events. It targets `form[data-promptbox]`, `data-promptbox-submit-action` and the native picker trigger’s `aria-controls` portal relationship and model button IDs (with or without search), verified against the installed BB bundle. These selectors may change in future BB versions. Reload cleanup and input handling have DOM tests. CLI/API sends, queued-message editors and side chats are not automatically routed.
 
-Auto state is per composer in browser local storage. A selected manual model disables Auto for that thread in that window/profile. The latest route and reason are shown above the composer. Routing logs contain model/type/scores only, never prompts or classifier credentials.
+Auto state is per composer in browser local storage. A selected manual model disables Auto for that thread in that window/profile. The selected model and reasoning level are shown above the composer. Routing logs contain model/type/scores only, never prompts or classifier credentials.
 
 ## Development and installation
 

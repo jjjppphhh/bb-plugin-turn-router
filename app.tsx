@@ -24,10 +24,12 @@ export function RoutingControl(){
   const [enabled,setEnabled]=useState(()=>localStorage.getItem(key)!=='off');
   const [busy,setBusy]=useState(false),[notice,setNotice]=useState('');
   const [selection,setSelection]=useState<{model:string;reasoningLevel:string}|null>(null);
-  const [delegate,setDelegate]=useState<{model:string;reasoningLevel:string;reason:string;text:string;parentThreadId:string}|null>(null);
-  const anchor=useRef<HTMLDivElement>(null),live=useRef({composer,view,enabled,busy}),epoch=useRef(0);
+  const [delegate,setDelegate]=useState<{model:string;reasoningLevel:string;reason:string;text:string;parentThreadId:string;main:{model:string;reasoningLevel:string}}|null>(null);
+  const [sideBusy,setSideBusy]=useState(false);
+  const anchor=useRef<HTMLDivElement>(null),live=useRef({composer,view,enabled,busy}),epoch=useRef(0),sideAction=useRef(false);
   live.current={composer,view,enabled,busy};
   useEffect(()=>{setEnabled(localStorage.getItem(key)!=='off');setNotice('');setDelegate(null);},[key]);
+  useEffect(()=>{if(delegate&&view.draft.text!==delegate.text){setDelegate(null);setNotice('');}},[view.draft.text,delegate?.text]);
   useEffect(()=>{
     const generation=++epoch.current;
     const form=anchor.current&&findComposer(anchor.current);if(!form)return;
@@ -41,7 +43,7 @@ export function RoutingControl(){
     void refreshSelection();
     const release=registerComposer(form,{
       enabled:()=>live.current.enabled,busy:()=>live.current.busy,running:()=>live.current.view.run.isRunning,
-      selectAuto:()=>{mode(true);setNotice('');void refreshSelection();},manual:()=>{mode(false);setNotice('');requestAnimationFrame(()=>void refreshSelection());},
+      selectAuto:()=>{mode(true);setNotice('');void refreshSelection();},manual:()=>{mode(false);setNotice('');setDelegate(null);requestAnimationFrame(()=>void refreshSelection());},
       submit:async()=>{
         if(live.current.busy||live.current.view.draft.isEmpty)return;
         const api=live.current.composer,snapshot=live.current.view;
@@ -67,7 +69,7 @@ export function RoutingControl(){
           if(!valid())return;
           if(!live.current.enabled)throw new Error('Manual selection kept. Send again to use your chosen model.');
           if(route.delegate&&snapshot.scope.kind==='thread'){
-            api.setInputLock(false);setDelegate({...route.delegate,text:originalText,parentThreadId:snapshot.scope.threadId});
+            api.setInputLock(false);setDelegate({...route.delegate,text:originalText,parentThreadId:snapshot.scope.threadId,main:{model:route.model,reasoningLevel:route.reasoningLevel}});
             setNotice('This bounded follow-up can run separately without changing the main thread.');return;
           }
           if(live.current.view.run.isRunning)throw new Error('A turn started while rating. Send again to steer its existing model.');
@@ -88,9 +90,31 @@ export function RoutingControl(){
     return()=>{mounted=false;epoch.current++;release();};
   },[key]);
   const selectedLabel=selection&&`${formatModel(selection.model)} · ${formatEffort(selection.reasoningLevel)}`;
+  const openSideThread=async()=>{
+    const offer=delegate;if(!offer||sideAction.current)return;
+    if(composer.text!==offer.text){setDelegate(null);setNotice('The draft changed. Send again to reassess it.');return;}
+    sideAction.current=true;setSideBusy(true);composer.setInputLock(true);
+    try{const opened=await rpc.call('openSideThread',{parentThreadId:offer.parentThreadId,text:offer.text,selection:{model:offer.model,reasoningLevel:offer.reasoningLevel}});setDelegate(null);navigate.toThread(opened.threadId);}
+    catch{setNotice('Could not open the side thread. Your draft is unchanged.');}
+    finally{sideAction.current=false;setSideBusy(false);composer.setInputLock(false);}
+  };
+  const keepInThread=async()=>{
+    const offer=delegate;if(!offer||sideAction.current)return;
+    if(!live.current.enabled||composer.text!==offer.text){setDelegate(null);setNotice('The selection or draft changed. Send again to reassess it.');return;}
+    sideAction.current=true;setSideBusy(true);composer.setInputLock(true);
+    try{
+      const applied=await composer.experimental_setSelection({model:offer.main.model,reasoningLevel:offer.main.reasoningLevel as 'low'|'medium'|'high'|'xhigh'|'max'|'ultra'});
+      if(applied.model!==offer.main.model||applied.reasoningLevel!==offer.main.reasoningLevel)throw new Error('BB could not apply the selected route.');
+      if(composer.text!==offer.text)throw new Error('The draft changed. Send again to reassess it.');
+      setSelection(offer.main);setDelegate(null);setNotice('');composer.setInputLock(false);
+      await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
+      await composer.experimental_submit({experimental_data:{routed:true,delegated:false,model:offer.main.model,reasoningLevel:offer.main.reasoningLevel}});
+    }catch(error){setNotice(error instanceof Error?error.message:'Could not send this turn. Your draft is unchanged.');}
+    finally{sideAction.current=false;setSideBusy(false);composer.setInputLock(false);}
+  };
   return <div ref={anchor} className="turn-router-status" role="status" aria-live="polite">
     <span>{busy?'Choosing model and reasoning…':notice||(enabled?`Auto · ${selectedLabel??'model and reasoning adapt each turn'}`:selectedLabel??'')}</span>
-    {delegate&&<span className="turn-router-delegate"><button type="button" onClick={async()=>{try{const opened=await rpc.call('openSideThread',{parentThreadId:delegate.parentThreadId,text:delegate.text,selection:{model:delegate.model,reasoningLevel:delegate.reasoningLevel}});setDelegate(null);navigate.toThread(opened.threadId);}catch{setNotice('Could not open the side thread. Your draft is unchanged.');}}}>Open in {formatModel(delegate.model)} · {formatEffort(delegate.reasoningLevel)}</button><button type="button" onClick={async()=>{setDelegate(null);await composer.experimental_submit({experimental_data:{routed:true,delegated:false}});}}>Keep in This Thread</button></span>}
+    {delegate&&<span className="turn-router-delegate"><button type="button" disabled={sideBusy} onClick={openSideThread}>{sideBusy?'Opening…':`Open in ${formatModel(delegate.model)} · ${formatEffort(delegate.reasoningLevel)}`}</button><button type="button" disabled={sideBusy} onClick={keepInThread}>Keep in This Thread</button></span>}
   </div>;
 }
 function RouterSettings(){

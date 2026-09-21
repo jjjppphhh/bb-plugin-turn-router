@@ -9,6 +9,7 @@ import { compactContext,hasPriorAssistantResponse } from './context';
 const selectionSchema=z.object({model:z.string().max(150),reasoningLevel:z.string().max(30)}).strict();
 const delegateSchema=selectionSchema.extend({reason:z.string().min(1).max(400)}).strict();
 const routeSchema=selectionSchema.extend({reason:z.string(),source:z.string(),score:z.number().nullable(),estimatedCost:z.number().nullable(),delegate:delegateSchema.optional()});
+type RoutedRoute=Route&{delegate?:z.infer<typeof delegateSchema>};
 export const inputSchema=z.object({
   text:z.string().min(1).max(30000),threadId:z.string().nullable(),environmentId:z.string().nullable(),hostId:z.string().nullable(),
   current:selectionSchema,providerId:z.literal('codex'),attachments:z.number().int().min(0).max(100),
@@ -22,7 +23,7 @@ export const rpcContract=defineRpcContract({
 export default async function plugin(bb:BbPluginApi) {
   const secrets=bb.settings.define({apiKey:{type:'string',label:'Optional classifier API key',secret:true}});
   const settings=async()=>settingsSchema.parse(await bb.storage.kv.get('settings') ?? defaults);
-  const cache=new Map<string,{expires:number;route:Route}>();
+  const cache=new Map<string,{expires:number;route:RoutedRoute}>();
   let activeClassifiers=0;
   bb.rpc.register(rpcContract,{
     getSettings:settings,
@@ -65,13 +66,14 @@ export default async function plugin(bb:BbPluginApi) {
       const currentScore=BENCHMARK.rows.find(row=>row.family===input.current.model&&row.reasoningLevel===input.current.reasoningLevel)?.score;
       const delegate=delegated&&currentScore!==undefined&&delegated.score!==null&&delegated.score<currentScore
         ? {...delegated,reason:`${delegated.reason} Open separately to keep this thread's working context intact.`} : undefined;
-      if (cache.size>100) cache.clear();cache.set(key,{expires:Date.now()+30000,route:result});
+      const routed:RoutedRoute=delegate?{...result,delegate}:result;
+      if (cache.size>100) cache.clear();cache.set(key,{expires:Date.now()+30000,route:routed});
       bb.log.info(`Route ${input.threadId??'new'}: ${rating.kind} ${rating.complexity}/100 -> ${result.model}/${result.reasoningLevel}`);
-      return delegate?{...result,delegate}:result;
+      return routed;
     },
     openSideThread:async({parentThreadId,text,selection})=>{
       const parent=await bb.sdk.threads.get({threadId:parentThreadId});
-      if(parent.providerId!=='codex'||parent.status==='active')throw new Error('Wait for the current thread to become idle before opening a side thread.');
+      if(parent.providerId!=='codex'||!['idle','error'].includes(parent.status))throw new Error('Wait for the current thread to become idle before opening a side thread.');
       const models=await bb.sdk.providers.models(parent.environmentId?{providerId:'codex',environmentId:parent.environmentId}:{providerId:'codex'});
       const selected=models.models.find(model=>model.model===selection.model&&model.supportedReasoningEfforts.some(effort=>effort.reasoningEffort===selection.reasoningLevel));
       if(!selected)throw new Error('That side-thread model is no longer available.');

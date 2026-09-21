@@ -34,8 +34,15 @@ describe('server routing boundaries',()=>{
   h.bb.sdk.threads.timeline.mockResolvedValue({rows:[{kind:'conversation',role:'assistant',text:'The implementation is complete.'}],pendingTodos:null});
   const route=await api.route({...input,current:{model:'gpt-6-astra',reasoningLevel:'high'},text:'Fix the typo in that heading.'});
   expect(route.delegate).toMatchObject({model:'gpt-5.6-luna'});
+  const cached=await api.route({...input,current:{model:'gpt-6-astra',reasoningLevel:'high'},text:'Fix the typo in that heading.'});
+  expect(cached.delegate).toEqual(route.delegate);
   expect(await api.openSideThread({parentThreadId:'thread',text:'Fix the typo in that heading.',selection:{model:route.delegate.model,reasoningLevel:route.delegate.reasoningLevel}})).toEqual({threadId:'side-thread'});
   expect(h.bb.sdk.threads.spawn).toHaveBeenCalledWith(expect.objectContaining({parentThreadId:'thread',model:route.delegate.model,reasoningLevel:route.delegate.reasoningLevel,providerId:'codex',visibility:'visible'}));
+ });
+ it('does not spawn a side thread while its parent is starting',async()=>{
+  const h=harness(),api=await h.start();h.bb.sdk.threads.get.mockResolvedValue({id:'thread',projectId:'project',providerId:'codex',status:'starting',environmentId:'env'});
+  await expect(api.openSideThread({parentThreadId:'thread',text:'A bounded task',selection:{model:'gpt-5.6-luna',reasoningLevel:'low'}})).rejects.toThrow('idle');
+  expect(h.bb.sdk.threads.spawn).not.toHaveBeenCalled();
  });
  it('fails back safely on timeout or missing authentication',async()=>{
   const api=await harness().start();vi.mocked(classify).mockRejectedValue(new Error('timeout'));expect(await api.route(input)).toMatchObject({...input.current,source:'retained'});

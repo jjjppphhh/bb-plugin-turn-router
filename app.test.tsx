@@ -65,10 +65,22 @@ it('does not overwrite a manual selection made while classification is pending',
 it('offers a lower-model side thread without sending or changing the main thread',async()=>{
  mock.route.mockResolvedValueOnce({model:'gpt-6-astra',reasoningLevel:'high',reason:'Keep context.',source:'retained',score:51,estimatedCost:1.73,delegate:{model:'gpt-5.6-luna',reasoningLevel:'low',reason:'Bounded task.'}});
  const ui=mount();fireEvent.click(ui.getByLabelText('Send'));
- await waitFor(()=>expect(ui.getByRole('button',{name:'Open in 5.6-Luna · Low'})).toBeTruthy());
+ const open=await ui.findByRole('button',{name:'Open in 5.6-Luna · Low'});
  expect(mock.api.experimental_submit).not.toHaveBeenCalled();
- mock.route.mockResolvedValueOnce({threadId:'side-thread'});fireEvent.click(ui.getByRole('button',{name:'Open in 5.6-Luna · Low'}));
+ mock.route.mockResolvedValueOnce({threadId:'side-thread'});fireEvent.click(open);fireEvent.click(open);
  await waitFor(()=>expect(mock.toThread).toHaveBeenCalledWith('side-thread'));
+ expect(mock.route.mock.calls.filter(([method])=>method==='openSideThread')).toHaveLength(1);
+});
+it('applies the main-thread reasoning choice before keeping delegated work here',async()=>{
+ mock.route.mockResolvedValueOnce({model:'gpt-6-astra',reasoningLevel:'medium',reason:'Keep context.',source:'retained',score:50,estimatedCost:1.54,delegate:{model:'gpt-5.6-luna',reasoningLevel:'low',reason:'Bounded task.'}});
+ const ui=mount();fireEvent.click(ui.getByLabelText('Send'));fireEvent.click(await ui.findByRole('button',{name:'Keep in This Thread'}));
+ await waitFor(()=>expect(mock.api.experimental_submit).toHaveBeenCalledOnce());
+ expect(mock.api.experimental_setSelection.mock.calls).toContainEqual([{model:'gpt-6-astra',reasoningLevel:'medium'}]);
+});
+it('withdraws a side-thread offer after a manual picker selection',async()=>{
+ mock.route.mockResolvedValueOnce({model:'gpt-6-astra',reasoningLevel:'high',reason:'Keep context.',source:'retained',score:51,estimatedCost:1.73,delegate:{model:'gpt-5.6-luna',reasoningLevel:'low',reason:'Bounded task.'}});
+ const ui=mount();fireEvent.focus(ui.getByTestId('editor'));fireEvent.click(ui.getByLabelText('Send'));await ui.findByRole('button',{name:'Open in 5.6-Luna · Low'});
+ fireEvent.click(ui.getByText('Luna'));await waitFor(()=>expect(ui.queryByRole('button',{name:'Open in 5.6-Luna · Low'})).toBeNull());
 });
 it('shows Astra and its measured costs in the settings cost table',()=>{
  const ui=render(<CostTable/>);expect(ui.getByRole('columnheader',{name:'6-Astra'})).toBeTruthy();

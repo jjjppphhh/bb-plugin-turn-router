@@ -2,7 +2,7 @@
 
 A personal fork of [jjcm/bb-plugin-autorouter](https://github.com/jjcm/bb-plugin-autorouter), based on commit 82313237ac608b3969b5925d30009676ffbf6adb.
 
-Routes each **new Codex turn** from BB's native composer. `Auto on/off` lives at the top right of the model dropdown, beside its search field. Manual model/effort selection turns Auto off. Toggle it back on to resume routing. Existing running turns retain their selection.
+Routes each **new Codex turn** from BB's native composer. `Auto` is a choice at the top right of the model dropdown, including the compact layout without search. Selecting a model or reasoning level leaves Auto mode; select Auto again to resume routing. Existing running turns retain their selection.
 
 ## Policy
 
@@ -25,7 +25,7 @@ Routing thresholds in `benchmarks.ts` are deliberately separate from measured da
 
 Requires Plugin SDK 0.4.104. Uses `useComposer().experimental_setSelection()` and `experimental_submit()` so native attachments, mentions, permissions, service tier, environment selection and error recovery remain owned by BB. Same-provider model changes preserve the thread through BB's normal picker mechanism. The router never clears, forks, stops or sends to another thread.
 
-BB has no model-picker extension slot or model-rewriting dispatch hook. A small cleanup-owned content script inserts the header toggle and intercepts local Enter/send-button events. It targets `form[data-promptbox]`, `data-promptbox-submit-action` and `input[aria-label="Search models"]`, verified against the installed BB bundle. These selectors may change in future BB versions. Reload cleanup and input handling have DOM tests. CLI/API sends, queued-message editors and side chats are not automatically routed.
+BB has no model-picker extension slot or model-rewriting dispatch hook. A small cleanup-owned content script inserts the Auto choice and intercepts local Enter/send-button events. It targets `form[data-promptbox]`, `data-promptbox-submit-action` and the native picker trigger’s `aria-controls` portal relationship and model button IDs (with or without search), verified against the installed BB bundle. These selectors may change in future BB versions. Reload cleanup and input handling have DOM tests. CLI/API sends, queued-message editors and side chats are not automatically routed.
 
 Auto state is per composer in browser local storage. A selected manual model disables Auto for that thread in that window/profile. The latest route and reason are shown above the composer. Routing logs contain model/type/scores only, never prompts or classifier credentials.
 

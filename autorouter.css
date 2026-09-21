@@ -1,4 +1,5 @@
-.turn-router-toggle { position:absolute; right:4px; top:50%; transform:translateY(-50%); border:1px solid var(--border); border-radius:6px; background:var(--background); color:var(--muted-foreground); padding:2px 7px; font-size:11px; line-height:20px; cursor:pointer; z-index:2; }
+.turn-router-header { display:flex; align-items:center; gap:4px; }
+.turn-router-toggle { margin-left:auto; flex-shrink:0; align-self:center; border:1px solid var(--border); border-radius:6px; background:var(--background); color:var(--muted-foreground); padding:2px 7px; font-size:11px; line-height:20px; cursor:pointer; z-index:2; }
 .turn-router-toggle[aria-pressed="true"] { color:var(--foreground); background:var(--accent); }
 .turn-router-toggle:focus-visible { outline:2px solid var(--ring); outline-offset:2px; }
 .turn-router-status { display:block; color:var(--muted-foreground); font-size:11px; padding:2px 8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

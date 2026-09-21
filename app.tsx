@@ -19,7 +19,7 @@ export function RoutingControl(){
     const mode=(next:boolean)=>{live.current.enabled=next;setEnabled(next);localStorage.setItem(key,next?'on':'off');};
     const release=registerComposer(form,{
       enabled:()=>live.current.enabled,busy:()=>live.current.busy,running:()=>live.current.view.run.isRunning,
-      toggle:()=>mode(!live.current.enabled),manual:()=>{mode(false);setNotice('Manual selection · Auto off');},
+      selectAuto:()=>{mode(true);setNotice('');},manual:()=>{mode(false);setNotice('');},
       submit:async()=>{
         if(live.current.busy||live.current.view.draft.isEmpty)return;
         const api=live.current.composer,snapshot=live.current.view;
@@ -43,6 +43,7 @@ export function RoutingControl(){
             providerId:'codex',current:{model:selected.model,reasoningLevel:selected.reasoningLevel},
           });
           if(!valid())return;
+          if(!live.current.enabled)throw new Error('Manual selection kept. Send again to use your chosen model.');
           if(live.current.view.run.isRunning)throw new Error('A turn started while rating. Send again to steer its existing model.');
           if(live.current.composer.text!==originalText)throw new Error('The draft changed while rating. Send again to rate the updated message.');
           const applied=await api.experimental_setSelection({model:route.model,reasoningLevel:route.reasoningLevel as typeof selected.reasoningLevel});
@@ -52,6 +53,7 @@ export function RoutingControl(){
           api.setInputLock(false);
           await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
           if(!valid())return;
+          if(!live.current.enabled)throw new Error('Manual selection kept. Send again to use your chosen model.');
           await api.experimental_submit({experimental_data:{routed:true,model:route.model,reasoningLevel:route.reasoningLevel}});
         }catch(error){if(valid())setNotice(error instanceof Error?error.message:'Routing failed. Your draft is preserved.');}
         finally{api.setInputLock(false);if(valid()){live.current.busy=false;setBusy(false);}}

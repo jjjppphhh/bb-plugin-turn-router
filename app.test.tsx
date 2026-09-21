@@ -17,7 +17,7 @@ beforeEach(()=>{
  release=mountComposerScripts();
 });
 afterEach(()=>{cleanup();release();vi.unstubAllGlobals();});
-function mount(){return render(<form data-promptbox><div contentEditable data-testid="editor"/><button type="submit" data-promptbox-submit-action aria-label="Send">Send</button><RoutingControl/></form>);}
+function mount(){return render(<form data-promptbox><div contentEditable data-testid="editor"/><button type="submit" data-promptbox-submit-action aria-label="Send">Send</button><button type="button" aria-label="Provider, model and reasoning" aria-expanded="true" aria-controls="test-picker">Model</button><div id="test-picker" role="dialog"><div><div>Model</div><button type="button" id="test-opt-0">Luna</button></div></div><RoutingControl/></form>);}
 it('applies a same-provider selection before submitting through the native composer',async()=>{
  const ui=mount();fireEvent.click(ui.getByLabelText('Send'));await waitFor(()=>expect(mock.api.experimental_submit).toHaveBeenCalledOnce());
  expect(mock.route).toHaveBeenCalledWith('route',expect.objectContaining({threadId:'thread',text:'Change the button label.',providerId:'codex'}));
@@ -39,4 +39,24 @@ it('cancels pending submission when the composer unmounts',async()=>{
  let finish!:(value:any)=>void;mock.route.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
  const ui=mount();fireEvent.click(ui.getByLabelText('Send'));await waitFor(()=>expect(mock.route).toHaveBeenCalled());ui.unmount();
  finish({model:'gpt-5.6-luna',reasoningLevel:'medium'});await new Promise(r=>setTimeout(r,0));expect(mock.api.experimental_submit).not.toHaveBeenCalled();
+});
+
+it('persists manual selection across remount and only resumes routing after selecting Auto',async()=>{
+ const ui=mount();fireEvent.focus(ui.getByTestId('editor'));
+ await waitFor(()=>expect(ui.getByLabelText('Auto: choose model and reasoning for each turn')).toBeTruthy());
+ fireEvent.click(ui.getByText('Luna'));expect(localStorage.getItem('turn-router:thread')).toBe('off');
+ ui.unmount();const remounted=mount();fireEvent.focus(remounted.getByTestId('editor'));
+ await waitFor(()=>expect(remounted.getByLabelText('Auto: choose model and reasoning for each turn').getAttribute('aria-pressed')).toBe('false'));
+ fireEvent.click(remounted.getByLabelText('Auto: choose model and reasoning for each turn'));
+ expect(localStorage.getItem('turn-router:thread')).toBe('on');
+ fireEvent.click(remounted.getByLabelText('Send'));await waitFor(()=>expect(mock.api.experimental_submit).toHaveBeenCalledOnce());
+});
+it('does not overwrite a manual selection made while classification is pending',async()=>{
+ let finish!:(value:any)=>void;mock.route.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ const ui=mount();fireEvent.focus(ui.getByTestId('editor'));
+ await waitFor(()=>expect(ui.getByLabelText('Auto: choose model and reasoning for each turn')).toBeTruthy());
+ fireEvent.click(ui.getByLabelText('Send'));await waitFor(()=>expect(mock.route).toHaveBeenCalled());
+ fireEvent.click(ui.getByText('Luna'));finish({model:'gpt-6-astra',reasoningLevel:'max'});
+ await waitFor(()=>expect(ui.getByRole('status').textContent).toContain('Manual selection kept'));
+ expect(mock.api.experimental_setSelection.mock.calls).toEqual([[{}]]);expect(mock.api.experimental_submit).not.toHaveBeenCalled();
 });

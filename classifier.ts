@@ -4,7 +4,7 @@ import { tmpdir, homedir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { choice, score, TypeSafeClient } from '@typesafe-ai/sdk';
-import { classifierPrompt, classifierRatingSchema, parseRating, ratingSchema, type ClassifierInput } from './router';
+import { classifierPrompt, parseRating, ratingSchema, type ClassifierInput } from './router';
 import type { Settings } from './settings';
 
 const probability = z.number().min(0).max(1);
@@ -144,7 +144,7 @@ export async function classify(input: ClassifierInput, settings: Settings, apiKe
   }
   const directory = await mkdtemp(join(tmpdir(),'bb-turn-rating-'));
   try {
-    await writeFile(join(directory,'schema.json'),JSON.stringify(z.toJSONSchema(classifierRatingSchema)),{mode:0o600});
+    await writeFile(join(directory,'schema.json'),JSON.stringify(z.toJSONSchema(ratingSchema)),{mode:0o600});
     let binary=settings.codexBinary;
     if (binary==='codex') {
       const local=join(homedir(),'.local','bin','codex');
@@ -154,10 +154,9 @@ export async function classify(input: ClassifierInput, settings: Settings, apiKe
       const child=spawn(binary,lunaArgs(directory),{cwd:directory,stdio:['pipe','ignore','pipe'],shell:false});
       // Drain stderr without retaining prompts, account details, or provider payloads.
       child.stderr.on('data',()=>{});
-      let timedOut=false;
-      const timer=setTimeout(()=>{timedOut=true;child.kill('SIGKILL');},settings.timeoutMs);
-      child.once('error',(error)=>{clearTimeout(timer);reject(Object.assign(new Error('Luna classifier could not start. Check the Codex CLI setting.'),{name:'LunaStartError',code:(error as NodeJS.ErrnoException).code}));});
-      child.once('close',code=>{clearTimeout(timer);code===0?resolve():reject(Object.assign(new Error('Luna classification timed out or failed; your current selection was retained.'),{name:timedOut?'LunaTimeoutError':'LunaExitError',code:timedOut?'timeout':`exit_${code??'signal'}`}));});
+      const timer=setTimeout(()=>{child.kill('SIGKILL');},settings.timeoutMs);
+      child.once('error',()=>{clearTimeout(timer);reject(new Error('Luna classifier could not start. Check the Codex CLI setting.'));});
+      child.once('close',code=>{clearTimeout(timer);code===0?resolve():reject(new Error('Luna classification timed out or failed; your current selection was retained.'));});
       child.stdin.on('error',()=>{}); child.stdin.end(prompt);
     });
     return parseRating(await readFile(join(directory,'result.json'),'utf8'));

@@ -4,7 +4,7 @@ export type ClassifierInput = { text: string; context: string; attachments: numb
 export const ratingSchema = z.object({
   kind: z.enum(['tweak','implementation','investigation','architecture','review','question']),
   complexity: z.number().min(0).max(100), uncertainty: z.number().min(0).max(100),
-  risk: z.number().min(0).max(100), confidence: z.number().min(0).max(1),kindConfidence:z.number().min(0).max(1).optional(),reason: z.string().min(1).max(200),
+  risk: z.number().min(0).max(100), confidence: z.number().min(0).max(1), reason: z.string().min(1).max(200),
 }).strict();
 export function parseRating(raw: string): Rating {
   const parsed = JSON.parse(raw.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));

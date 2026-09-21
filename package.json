@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-turn-router",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "type": "module",
   "description": "Context-aware per-turn Codex routing",
   "scripts": {

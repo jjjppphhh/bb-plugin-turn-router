@@ -1,0 +1,167 @@
+{
+  "benchmark": "Artificial Analysis Intelligence Index v4.3.2",
+  "retrievedAt": "2026-09-21",
+  "rows": [
+    {
+      "family": "gpt-6-astra",
+      "reasoningLevel": "low",
+      "score": 46.0,
+      "costPerTask": 0.82,
+      "source": "https://artificialanalysis.ai/models/gpt-6-astra-low"
+    },
+    {
+      "family": "gpt-6-astra",
+      "reasoningLevel": "medium",
+      "score": 50.0,
+      "costPerTask": 1.54,
+      "source": "https://artificialanalysis.ai/models/gpt-6-astra-medium"
+    },
+    {
+      "family": "gpt-6-astra",
+      "reasoningLevel": "high",
+      "score": 51.0,
+      "costPerTask": 1.73,
+      "source": "https://artificialanalysis.ai/models/gpt-6-astra-high"
+    },
+    {
+      "family": "gpt-6-astra",
+      "reasoningLevel": "xhigh",
+      "score": 52.0,
+      "costPerTask": 2.31,
+      "source": "https://artificialanalysis.ai/models/gpt-6-astra-xhigh"
+    },
+    {
+      "family": "gpt-6-astra",
+      "reasoningLevel": "max",
+      "score": 53.0,
+      "costPerTask": 3.26,
+      "source": "https://artificialanalysis.ai/models/gpt-6-astra"
+    },
+    {
+      "family": "gpt-5.6-sol",
+      "reasoningLevel": "low",
+      "score": 33.0,
+      "costPerTask": 0.26,
+      "source": "https://artificialanalysis.ai/models/gpt-5-6-sol-low"
+    },
+    {
+      "family": "gpt-5.6-sol",
+      "reasoningLevel": "medium",
+      "score": 39.0,
+      "costPerTask": 0.5,
+      "source": "https://artificialanalysis.ai/models/gpt-5-6-sol-medium"
+    },
+    {
+      "family": "gpt-5.6-sol",
+      "reasoningLevel": "high",
+      "score": 42.0,
+      "costPerTask": 0.81,
+      "source": "https://artificialanalysis.ai/models/gpt-5-6-sol-high"
+    },
+    {
+      "family": "gpt-5.6-sol",
+      "reasoningLevel": "xhigh",
+      "score": 44.0,
+      "costPerTask": 1.18,
+      "source": "https://artificialanalysis.ai/models/gpt-5-6-sol-xhigh"
+    },
+    {
+      "family": "gpt-5.6-sol",
+      "reasoningLevel": "max",
+      "score": 47.0,
+      "costPerTask": 1.99,
+      "source": "https://artificialanalysis.ai/models/gpt-5-6-sol"
+    },
+    {
+      "family": "gpt-5.6-terra",
+      "reasoningLevel": "low",
+      "score": 27.0,
+      "costPerTask": 0.14,
+      "source": "https://artificialanalysis.ai/models/gpt-5-6-terra-low"
+    },
+    {
+      "family": "gpt-5.6-terra",
+      "reasoningLevel": "medium",
+      "score": 30.0,
+      "costPerTask": 0.18,
+      "source": "https://artificialanalysis.ai/models/gpt-5-6-terra-medium"
+    },
+    {
+      "family": "gpt-5.6-terra",
+      "reasoningLevel": "high",
+      "score": 34.0,
+      "costPerTask": 0.34,
+      "source": "https://artificialanalysis.ai/models/gpt-5-6-terra-high"
+    },
+    {
+      "family": "gpt-5.6-terra",
+      "reasoningLevel": "xhigh",
+      "score": 38.0,
+      "costPerTask": 0.63,
+      "source": "https://artificialanalysis.ai/models/gpt-5-6-terra-xhigh"
+    },
+    {
+      "family": "gpt-5.6-terra",
+      "reasoningLevel": "max",
+      "score": 42.0,
+      "costPerTask": 1.4,
+      "source": "https://artificialanalysis.ai/models/gpt-5-6-terra"
+    },
+    {
+      "family": "gpt-5.6-luna",
+      "reasoningLevel": "low",
+      "score": 21.0,
+      "costPerTask": 0.01,
+      "source": "https://artificialanalysis.ai/models/gpt-5-6-luna-low"
+    },
+    {
+      "family": "gpt-5.6-luna",
+      "reasoningLevel": "medium",
+      "score": 25.0,
+      "costPerTask": 0.02,
+      "source": "https://artificialanalysis.ai/models/gpt-5-6-luna-medium"
+    },
+    {
+      "family": "gpt-5.6-luna",
+      "reasoningLevel": "high",
+      "score": 32.0,
+      "costPerTask": 0.04,
+      "source": "https://artificialanalysis.ai/models/gpt-5-6-luna-high"
+    },
+    {
+      "family": "gpt-5.6-luna",
+      "reasoningLevel": "xhigh",
+      "score": 35.0,
+      "costPerTask": 0.09,
+      "source": "https://artificialanalysis.ai/models/gpt-5-6-luna-xhigh"
+    },
+    {
+      "family": "gpt-5.6-luna",
+      "reasoningLevel": "max",
+      "score": 37.0,
+      "costPerTask": 0.18,
+      "source": "https://artificialanalysis.ai/models/gpt-5-6-luna"
+    },
+    {
+      "family": "gpt-5.5",
+      "reasoningLevel": "medium",
+      "score": 34.0,
+      "costPerTask": 0.9,
+      "source": "https://artificialanalysis.ai/models/gpt-5-5-medium"
+    },
+    {
+      "family": "gpt-5.5",
+      "reasoningLevel": "high",
+      "score": 37.0,
+      "costPerTask": 1.54,
+      "source": "https://artificialanalysis.ai/models/gpt-5-5-high"
+    },
+    {
+      "family": "gpt-5.5",
+      "reasoningLevel": "xhigh",
+      "score": 38,
+      "costPerTask": 2.63,
+      "source": "https://artificialanalysis.ai/models/gpt-5-5"
+    }
+  ]
+}

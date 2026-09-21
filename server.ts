@@ -1,259 +1,69 @@
-import {
-  defineRpcContract,
-  type BbPluginApi,
-  type NewThreadRequest,
-} from "@get-bb/plugin-sdk";
-import { z } from "zod";
-import { createRoutedThread } from "./router.js";
-import {
-  autorouterSettingsPatchSchema,
-  autorouterSettingsSchema,
-  defaultAutorouterSettings,
-  parseStoredSettings,
-  type AutorouterSettings,
-} from "./settings.js";
-
-const SETTINGS_KEY = "settings";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isNewThreadRequest(value: unknown): value is NewThreadRequest {
-  if (!isRecord(value) || !isRecord(value.environment)) return false;
-  return (
-    typeof value.projectId === "string" &&
-    typeof value.providerId === "string" &&
-    typeof value.model === "string" &&
-    typeof value.reasoningLevel === "string" &&
-    typeof value.permissionMode === "string" &&
-    typeof value.environment.type === "string" &&
-    Array.isArray(value.input)
-  );
-}
-
-const newThreadRequestSchema = z.custom<NewThreadRequest>(
-  isNewThreadRequest,
-  "Invalid new-thread request",
-);
-
-const reasoningLevelSchema = z.enum([
-  "none",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-  "ultracode",
-  "ultra",
-]);
-
-const routeResultSchema = z
-  .object({
-    benchmarkScore: z.number().nullable(),
-    costPerTask: z.number().nullable(),
-    difficulty: z.number().int().min(0).max(100),
-    frugality: z.number().int().min(0).max(100),
-    model: z.string(),
-    overrideApplied: z.boolean(),
-    permissionMode: z.enum(["accept-edits", "auto", "full"]),
-    providerId: z.string(),
-    reasoningLevel: reasoningLevelSchema,
-    supportsServiceTier: z.boolean(),
-    threadId: z.string(),
-  })
-  .strict();
-
-export const rpcContract = defineRpcContract({
-  getSettings: {
-    input: z.null(),
-    output: autorouterSettingsSchema,
-  },
-  updateSettings: {
-    input: autorouterSettingsPatchSchema,
-    output: autorouterSettingsSchema,
-  },
-  createThread: {
-    input: z.object({ request: newThreadRequestSchema }).strict(),
-    output: routeResultSchema,
-  },
+import { defineRpcContract, type BbPluginApi } from '@get-bb/plugin-sdk';
+import { z } from 'zod';
+import { createHash } from 'node:crypto';
+import { BENCHMARK, chooseRoute, type Route } from './benchmarks';
+import { settingsSchema, defaults } from './settings';
+import { classifierPrompt, obviousRating, explicitSelection } from './router';
+import { classify } from './classifier';
+import { compactContext } from './context';
+const selectionSchema=z.object({model:z.string().max(150),reasoningLevel:z.string().max(30)}).strict();
+const routeSchema=selectionSchema.extend({reason:z.string(),source:z.string(),score:z.number().nullable(),estimatedCost:z.number().nullable()});
+export const inputSchema=z.object({
+  text:z.string().min(1).max(30000),threadId:z.string().nullable(),environmentId:z.string().nullable(),hostId:z.string().nullable(),
+  current:selectionSchema,providerId:z.literal('codex'),attachments:z.number().int().min(0).max(100),
+}).strict();
+export const rpcContract=defineRpcContract({
+  getSettings:{input:z.null(),output:settingsSchema},
+  updateSettings:{input:settingsSchema,output:settingsSchema},
+  route:{input:inputSchema,output:routeSchema},
 });
-
-function parseBoolean(value: string): boolean {
-  if (value === "true") return true;
-  if (value === "false") return false;
-  throw new Error("Expected true or false");
-}
-
-function formatSettings(settings: AutorouterSettings, json: boolean): string {
-  if (json) return `${JSON.stringify(settings)}\n`;
-  return [
-    `Enabled: ${settings.enabled ? "yes" : "no"}`,
-    `Frugality: ${settings.frugality}/100 ($ -> $$$)`,
-    `Decision agent: ${settings.decisionAgent}`,
-    `Custom instructions: ${settings.customInstructions || "(none)"}`,
-    "",
-  ].join("\n");
-}
-
-export default async function plugin(bb: BbPluginApi) {
-  async function readSettings(): Promise<AutorouterSettings> {
-    return parseStoredSettings(await bb.storage.kv.get(SETTINGS_KEY));
-  }
-
-  async function updateSettings(
-    patch: Partial<AutorouterSettings>,
-  ): Promise<AutorouterSettings> {
-    const next = autorouterSettingsSchema.parse({
-      ...(await readSettings()),
-      ...patch,
-    });
-    await bb.storage.kv.set(SETTINGS_KEY, next);
-    bb.realtime.publish("settings-changed", next);
-    return next;
-  }
-
-  if ((await bb.storage.kv.get(SETTINGS_KEY)) === undefined) {
-    await bb.storage.kv.set(SETTINGS_KEY, defaultAutorouterSettings);
-  }
-
-  bb.rpc.register(rpcContract, {
-    getSettings: readSettings,
-    updateSettings,
-    createThread: async ({ request }) =>
-      createRoutedThread(bb, request, await readSettings()),
-  });
-
-  bb.cli.register({
-    name: "autorouter",
-    summary: "Route new bb threads by difficulty, quota, and model cost",
-    commands: [
-      {
-        name: "status",
-        summary: "Show Autorouter settings",
-        usage: "bb autorouter status [--json]",
-      },
-      {
-        name: "config",
-        summary: "Update Autorouter settings",
-        usage:
-          "bb autorouter config [--enabled true|false] [--frugality 0-100] [--decision-agent automatic|provider/model] [--instructions text] [--json]",
-      },
-      {
-        name: "route",
-        summary: "Create an automatically routed thread in the current project",
-        usage: "bb autorouter route --prompt <text> [--json]",
-      },
-    ],
-    async run(argv, ctx) {
-      const args = [...argv];
-      const jsonIndex = args.indexOf("--json");
-      const json = jsonIndex >= 0;
-      if (json) args.splice(jsonIndex, 1);
-      const command = args.shift() ?? "status";
-
-      try {
-        if (command === "status") {
-          return {
-            exitCode: 0,
-            stdout: formatSettings(await readSettings(), json),
-          };
-        }
-
-        if (command === "config") {
-          const patch: Partial<AutorouterSettings> = {};
-          while (args.length > 0) {
-            const flag = args.shift();
-            const value = args.shift();
-            if (!flag || value === undefined) {
-              throw new Error(
-                `Missing value for ${flag ?? "configuration flag"}`,
-              );
-            }
-            if (flag === "--enabled") patch.enabled = parseBoolean(value);
-            else if (flag === "--frugality") patch.frugality = Number(value);
-            else if (flag === "--decision-agent") patch.decisionAgent = value;
-            else if (flag === "--instructions")
-              patch.customInstructions = value;
-            else throw new Error(`Unknown config flag: ${flag}`);
-          }
-          const parsedPatch = autorouterSettingsPatchSchema.parse(patch);
-          return {
-            exitCode: 0,
-            stdout: formatSettings(await updateSettings(parsedPatch), json),
-          };
-        }
-
-        if (command === "route") {
-          if (!ctx.projectId) {
-            throw new Error("Run this command from a bb project thread");
-          }
-          const promptFlag = args.indexOf("--prompt");
-          const prompt =
-            promptFlag >= 0
-              ? args[promptFlag + 1]
-              : args.filter((arg) => !arg.startsWith("--")).join(" ");
-          if (!prompt?.trim()) throw new Error("Provide --prompt <text>");
-
-          let environment: NewThreadRequest["environment"] = {
-            type: "project-default",
-          };
-          if (ctx.threadId) {
-            const current = await bb.sdk.threads.get({
-              threadId: ctx.threadId,
-              signal: ctx.signal,
-            });
-            if (current.environmentId) {
-              environment = {
-                type: "reuse",
-                environmentId: current.environmentId,
-              };
-            }
-          }
-          const result = await createRoutedThread(
-            bb,
-            {
-              projectId: ctx.projectId,
-              environment,
-              input: [{ type: "text", text: prompt.trim(), mentions: [] }],
-              providerId: "codex",
-              model: "gpt-5.6-luna",
-              reasoningLevel: "low",
-              permissionMode: "auto",
-              executionInputSources: {
-                providerId: "explicit",
-                model: "explicit",
-                reasoningLevel: "explicit",
-                permissionMode: "explicit",
-              },
-            },
-            await readSettings(),
-          );
-          return {
-            exitCode: 0,
-            stdout: json
-              ? `${JSON.stringify(result)}\n`
-              : [
-                  `Difficulty score: ${result.difficulty}/100`,
-                  `Chosen agent: ${result.providerId}/${result.model} (${result.reasoningLevel})`,
-                  `Thread: ${result.threadId}`,
-                  "",
-                ].join("\n"),
-          };
-        }
-
-        throw new Error(`Unknown command: ${command}`);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-          exitCode: 1,
-          stderr: json
-            ? `${JSON.stringify({ error: message })}\n`
-            : `Autorouter: ${message}\n`,
-        };
+export default async function plugin(bb:BbPluginApi) {
+  const secrets=bb.settings.define({apiKey:{type:'string',label:'Optional classifier API key',secret:true}});
+  const settings=async()=>settingsSchema.parse(await bb.storage.kv.get('settings') ?? defaults);
+  const cache=new Map<string,{expires:number;route:Route}>();
+  let activeClassifiers=0;
+  bb.rpc.register(rpcContract,{
+    getSettings:settings,
+    updateSettings:async next=>{await bb.storage.kv.set('settings',next);cache.clear();return next;},
+    route:async input=>{
+      const config=await settings();
+      const retain=(reason:string):Route=>({...input.current,reason,source:'retained',score:null,estimatedCost:null});
+      let environmentId=input.environmentId, hostId=input.hostId;
+      let context={text:'',characters:0};
+      if (input.threadId) {
+        const thread=await bb.sdk.threads.get({threadId:input.threadId});
+        if (thread.providerId!=='codex') throw new Error('Turn Router only changes models within Codex.');
+        if (thread.status==='active') return retain('Running turn; keeping its current model and effort.');
+        environmentId=thread.environmentId;
+        const timeline=await bb.sdk.threads.timeline({threadId:thread.id,segmentLimit:'8',includeNestedRows:'true'});
+        context=compactContext(timeline.rows,thread.title ?? '',timeline.pendingTodos?.items.filter(t=>t.status!=='completed').map(t=>t.text));
       }
+      const scope=environmentId?{environmentId}:hostId?{hostId}:{};
+      const models=await bb.sdk.providers.models({...scope,providerId:'codex'});
+      if (models.modelLoadError) throw new Error('Codex model catalog could not be loaded.');
+      const candidates=models.models.filter(m=>!m.routeProviderId||m.routeProviderId==='codex').map(m=>({model:m.model,efforts:m.supportedReasoningEfforts.map(e=>e.reasoningEffort)}));
+      const explicit=explicitSelection(input.text,candidates,input.current);
+      if (explicit) return {...explicit,reason:'Your explicit model/effort request.',source:'explicit',score:null,estimatedCost:null};
+      if (input.attachments) return retain('Attachments need the working model’s inspection; keeping your current selection.');
+      const key=createHash('sha256').update(JSON.stringify({input,context,config,candidates})).digest('hex');
+      const cached=cache.get(key);if(cached&&cached.expires>Date.now())return cached.route;
+      let rating=obviousRating(input.text,context.text,input.attachments);
+      if (!rating) {
+        if (activeClassifiers>=2) return retain('Classifier busy; keeping your current selection.');
+        activeClassifiers++;
+        try { rating=await classify(classifierPrompt(input.text,context.text,input.attachments),config,(await secrets.get()).apiKey); }
+        catch { return retain('Classifier unavailable; keeping your current model and effort.'); }
+        finally {activeClassifiers--;}
+      }
+      const result=chooseRoute({candidates,rating,premium:config.premium,current:input.current,contextCharacters:context.characters});
+      if (cache.size>100) cache.clear();cache.set(key,{expires:Date.now()+30000,route:result});
+      bb.log.info(`Route ${input.threadId??'new'}: ${rating.kind} ${rating.complexity}/100 -> ${result.model}/${result.reasoningLevel}`);
+      return result;
     },
   });
-
-  bb.log.info("Autorouter loaded");
+  bb.cli.register({name:'turn-router',summary:'Inspect per-turn Codex routing',commands:[{name:'status',summary:'Show policy and benchmark provenance',usage:'bb turn-router status'}],async run(argv){
+    if(argv[0]&&argv[0]!=='status')return {exitCode:1,stderr:'Usage: bb turn-router status\n'};
+    return {exitCode:0,stdout:JSON.stringify({settings:await settings(),benchmark:BENCHMARK.benchmark,retrievedAt:BENCHMARK.retrievedAt,measuredOptions:BENCHMARK.rows.length})+'\n'};
+  }});
+  bb.log.info('Turn Router loaded');
 }

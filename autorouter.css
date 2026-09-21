@@ -1,33 +1,9 @@
-/*
- * The composer's provider/model picker is owned by bb, so Auto Router restyles
- * it from the outside: the real model name is hidden and the label is redrawn
- * from `--autorouter-picker-label`. Idle that reads "Auto"; while a submission
- * is being routed the page sets the property to the animated selecting text,
- * so the status appears on the control whose value is being decided.
- */
-.autorouter-composer
-  button[aria-label^="Provider, model and reasoning"]
-  > span[title]
-  > * {
-  display: none;
-}
-
-.autorouter-composer
-  button[aria-label^="Provider, model and reasoning"]
-  > span[title]::before {
-  content: var(--autorouter-picker-label, "Auto");
-  color: var(--foreground);
-  /*
-   * The trigger is `w-fit max-w-full`, so the selecting text is far wider than
-   * the idle "Auto" and would spill out of a narrow composer. Truncate instead:
-   * the label degrades to an ellipsis rather than breaking the toolbar row.
-   */
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.autorouter-composer button[aria-label^="Provider, model and reasoning"] > svg {
-  display: none;
-}
+.turn-router-toggle { position:absolute; right:4px; top:50%; transform:translateY(-50%); border:1px solid var(--border); border-radius:6px; background:var(--background); color:var(--muted-foreground); padding:2px 7px; font-size:11px; line-height:20px; cursor:pointer; z-index:2; }
+.turn-router-toggle[aria-pressed="true"] { color:var(--foreground); background:var(--accent); }
+.turn-router-toggle:focus-visible { outline:2px solid var(--ring); outline-offset:2px; }
+.turn-router-status { display:block; color:var(--muted-foreground); font-size:11px; padding:2px 8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.turn-router-status:empty { display:none; }
+.turn-router-settings { display:flex; flex-direction:column; gap:14px; font-size:13px; }
+.turn-router-settings label { display:flex; flex-direction:column; gap:5px; }
+.turn-router-settings input,.turn-router-settings select,.turn-router-settings button { border:1px solid var(--border); border-radius:6px; padding:6px 9px; background:var(--background); color:var(--foreground); }
+.turn-router-settings p { color:var(--muted-foreground); }

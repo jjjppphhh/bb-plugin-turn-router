@@ -1,139 +1,48 @@
-import { describe, expect, it } from "vitest";
-import {
-  rankAutoModelOptions,
-  type AutoModelCandidate,
-  type ReasoningLevel,
-} from "./benchmarks.js";
-
-function candidate(
-  providerId: string,
-  modelId: string,
-  reasoningLevels: ReasoningLevel[],
-): AutoModelCandidate {
-  return {
-    providerId,
-    permissionModes: ["accept-edits", "full"],
-    supportsServiceTier: providerId !== "claude-code",
-    model: {
-      id: modelId,
-      model: modelId,
-      displayName: modelId,
-      description: "",
-      supportedReasoningEfforts: reasoningLevels.map((reasoningEffort) => ({
-        reasoningEffort,
-        description: reasoningEffort,
-      })),
-      defaultReasoningEffort: reasoningLevels[0] ?? "medium",
-      isDefault: false,
-    },
-  };
-}
-
-const ALL_REASONING: ReasoningLevel[] = [
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-];
-
-describe("rankAutoModelOptions", () => {
-  const guideCandidates = [
-    candidate("codex", "gpt-5.6-luna", ALL_REASONING),
-    candidate("codex", "gpt-5.6-sol", ALL_REASONING),
-    candidate("acp-cursor", "grok-4.5", ["low", "medium", "high"]),
-    candidate("claude-code", "claude-fable-5", ALL_REASONING),
-  ];
-  const fullQuota = new Map([
-    ["codex", 1],
-    ["acp-cursor", 1],
-    ["claude-code", 1],
-  ]);
-
-  it.each([
-    [1, "gpt-5.6-luna", "low"],
-    [50, "gpt-5.6-luna", "high"],
-    [75, "grok-4.5", "medium"],
-    [100, "gpt-5.6-sol", "medium"],
-  ] as const)(
-    "follows the $ guide at difficulty %i",
-    (difficulty, expectedModel, expectedReasoning) => {
-      expect(
-        rankAutoModelOptions({
-          candidates: guideCandidates,
-          difficulty,
-          frugality: 0,
-          quotaRemainingByProvider: fullQuota,
-        })[0],
-      ).toMatchObject({
-        model: expectedModel,
-        reasoningLevel: expectedReasoning,
-      });
-    },
-  );
-
-  it.each([
-    [1, "grok-4.5", "medium"],
-    [50, "gpt-5.6-sol", "high"],
-    [75, "claude-fable-5", "high"],
-    [100, "claude-fable-5", "max"],
-  ] as const)(
-    "follows the $$$ guide at difficulty %i",
-    (difficulty, expectedModel, expectedReasoning) => {
-      expect(
-        rankAutoModelOptions({
-          candidates: guideCandidates,
-          difficulty,
-          frugality: 100,
-          quotaRemainingByProvider: fullQuota,
-        })[0],
-      ).toMatchObject({
-        model: expectedModel,
-        reasoningLevel: expectedReasoning,
-      });
-    },
-  );
-
-  it("never sends a minimum-difficulty task to the strongest option", () => {
-    expect(
-      rankAutoModelOptions({
-        candidates: guideCandidates,
-        difficulty: 1,
-        frugality: 75,
-        quotaRemainingByProvider: fullQuota,
-      })[0],
-    ).not.toMatchObject({ model: "claude-fable-5", reasoningLevel: "max" });
-  });
-
-  it("moves work away from a provider with scarce quota", () => {
-    expect(
-      rankAutoModelOptions({
-        candidates: [
-          candidate("codex", "gpt-5.6-luna", ALL_REASONING),
-          candidate("acp-cursor", "composer-2.5", ["medium"]),
-        ],
-        difficulty: 50,
-        frugality: 0,
-        quotaRemainingByProvider: new Map([
-          ["codex", 0.1],
-          ["acp-cursor", 1],
-        ]),
-      })[0],
-    ).toMatchObject({
-      providerId: "acp-cursor",
-      model: "composer-2.5",
-      reasoningLevel: "medium",
-    });
-  });
-
-  it("does not invent scores for unmeasured models", () => {
-    expect(
-      rankAutoModelOptions({
-        candidates: [candidate("codex", "gpt-5.4-mini", ALL_REASONING)],
-        difficulty: 0,
-        frugality: 50,
-        quotaRemainingByProvider: new Map([["codex", 1]]),
-      }),
-    ).toEqual([]);
-  });
+import {describe,it,expect} from 'vitest';
+import {chooseRoute,BENCHMARK,type Rating} from './benchmarks';
+import {parseRating,explicitSelection,obviousRating} from './router';
+const candidates=['gpt-6-astra','gpt-5.6-sol','gpt-5.6-terra','gpt-5.6-luna','gpt-5.5'].map(model=>({model,efforts:['low','medium','high','xhigh','max','ultra']}));
+const rating=(n:number):Rating=>({kind:'implementation',complexity:n,uncertainty:n,risk:n,confidence:.9,reason:'Bounded task.'});
+const route=(n:number,premium=50)=>chooseRoute({candidates,rating:rating(n),premium});
+describe('per-turn routing',()=>{
+ it('keeps a narrow tweak cheap even after a demanding Astra turn',()=>{
+  const r=chooseRoute({candidates,rating:rating(10),premium:50,current:{model:'gpt-6-astra',reasoningLevel:'max'}});
+  expect(r.model).toBe('gpt-5.6-luna');expect(['low','medium']).toContain(r.reasoningLevel);
+ });
+ it('can reach Astra low, high and max at appropriate demand/preferences',()=>{
+  expect(route(80)).toMatchObject({model:'gpt-6-astra',reasoningLevel:'low'});
+  expect(route(100)).toMatchObject({model:'gpt-6-astra',reasoningLevel:'high'});
+  expect(route(100,100)).toMatchObject({model:'gpt-6-astra',reasoningLevel:'max'});
+ });
+ it('holds selection when classifier is uncertain',()=>{
+  expect(chooseRoute({candidates,rating:{...rating(5),confidence:.4},premium:50,current:{model:'gpt-6-astra',reasoningLevel:'high'}})).toMatchObject({model:'gpt-6-astra',reasoningLevel:'high',source:'retained'});
+ });
+ it('escalates on uncertainty or risk even if implementation is small',()=>{
+  expect(chooseRoute({candidates,rating:{...rating(5),risk:95},premium:50}).model).toBe('gpt-6-astra');
+ });
+ it('does not invent support or benchmarks for ultra',()=>{
+  expect(BENCHMARK.rows.every(r=>r.reasoningLevel!=='ultra')).toBe(true);
+  expect(chooseRoute({candidates:candidates.filter(c=>c.model!=='gpt-6-astra'),rating:rating(100),premium:100}).model).not.toBe('gpt-6-astra');
+ });
+ it('honours explicit model and effort requests including unmeasured ultra',()=>{
+  expect(explicitSelection('Use Astra ultra to review this.',candidates)).toEqual({model:'gpt-6-astra',reasoningLevel:'ultra'});
+  expect(explicitSelection('Why did this choose Astra?',candidates)).toBeNull();
+  expect(explicitSelection('Do not use Astra high.',candidates)).toBeNull();
+ });
+ it('does not silently substitute unavailable explicit models',()=>{
+  expect(()=>explicitSelection('use astra high',candidates.slice(1))).toThrow('unavailable');
+ });
+ it('rejects malformed and out of range ratings',()=>{
+  expect(()=>parseRating('{"complexity":999}')).toThrow();
+  expect(()=>parseRating('plain prose')).toThrow();
+ });
+ it('only short-circuits very narrow tweaks with context',()=>{
+  expect(obviousRating('fix the typo in that heading','Previous accepted implementation',0)?.kind).toBe('tweak');
+  expect(obviousRating('make it simpler','Large design',0)).toBeNull();
+  expect(obviousRating('fix the typo in that heading','',0)).toBeNull();
+ });
+ it('has dated primary-source provenance for every measured option',()=>{
+  expect(BENCHMARK.rows.length).toBeGreaterThanOrEqual(22);
+  for(const r of BENCHMARK.rows){expect(r.source).toMatch(/^https:\/\/artificialanalysis.ai\/models\//);expect(r.costPerTask).toBeGreaterThan(0);}
+ });
 });

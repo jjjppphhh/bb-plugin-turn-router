@@ -1,118 +1,48 @@
-# BB Auto Router
+# Turn Router for BB
 
-Auto Router is a standalone bb extension that creates new threads after
-choosing a concrete provider, model, and reasoning level from:
+A personal fork of [jjcm/bb-plugin-autorouter](https://github.com/jjcm/bb-plugin-autorouter), based on commit 82313237ac608b3969b5925d30009676ffbf6adb.
 
-1. a model-rated 0–100 task difficulty;
-2. live Codex, Claude Code, and Cursor quota remaining;
-3. a bundled CursorBench 3.2 score and cost-per-task snapshot; and
-4. a user-controlled `$` to `$$$` frugality preference.
+Routes each **new Codex turn** from BB's native composer. `Auto on/off` lives at the top right of the model dropdown, beside its search field. Manual model/effort selection turns Auto off. Toggle it back on to resume routing. Existing running turns retain their selection.
 
-No third-party benchmark API is called at runtime. Grok 4.5's published scores
-are reduced by 10% as part of the local policy.
+## Policy
 
-## What happens to your prompt
+- Rate the next message with a bounded excerpt of recent conversation and pending plan items; do not assume follow-ups are easy.
+- Obvious, narrowly defined text corrections skip inference.
+- Default classifier: GPT-5.6 Luna low through the local Codex CLI and existing sign-in. Runs ephemerally in an empty temporary directory with read-only sandbox, shell/unified execution, web, apps, plugins and subagents disabled; project instructions omitted. Temporary files are removed on completion or timeout. This uses the local server machine's Codex sign-in.
+- Optional compatible chat-completions classifier supports a user-selected model/provider, including DeepSeek or Kimi. Configure an HTTPS base URL and exact model in settings, and the API key in BB's secure setting. No tools are supplied. Enabling this sends draft text and recent conversation excerpts to that provider and may incur API charges.
+- Confidence below 0.65, classifier failure, unseen attachments, or active work preserves the current model/effort. No silent provider changes.
+- Match capability demand to measured options, then prefer lower benchmark cost. Complexity also limits effort (medium for simple tasks, high for routine tasks, xhigh/max for demanding work). Premium preference has less effect on simple tasks.
+- Keep an adequate current selection when potential savings are small. This is a heuristic for reducing model switches, not a claim of measured Codex cache savings.
+- Explicit `use Astra high` style requests take precedence. Ultra has no comparable published score and remains an explicit/manual choice. Unmeasured combinations are never assigned fabricated scores.
 
-**Every submission first runs a short hidden classification turn on one of your
-installed providers, which may not be the provider the thread ends up on.**
-Before routing, Auto Router spawns a hidden thread titled "Autorouter
-classification" and sends it your prompt text (truncated to 20,000 characters)
-plus any custom rating instructions you configured. Its only job is to return a
-0-100 difficulty score.
+## Benchmark provenance
 
-- Provider choice: with the default `automatic` decision agent this is Cursor
-  `gpt-5.6-sol-medium`, else Codex `gpt-5.6-luna`, else the first usable model
-  with quota remaining. Pick a fixed classifier under **Extensions → Plugins →
-  Auto Router** if you want your prompts to go to one known vendor.
-- The classification thread is archived and stopped as soon as the score is
-  read.
+`benchmark-data.json` uses **Artificial Analysis Intelligence Index v4.3.2** scores and its cost per Intelligence Index task. Retrieved 2026-09-21. Every row includes a primary-source model URL. This is a consistent general-capability benchmark, **not** CursorBench or the Coding Agent Index. Do not mix scales. Costs are published benchmark estimates, not subscription usage rates. Refresh the snapshot and re-run policy tests when the source methodology changes.
 
-### Residual risk
+Routing thresholds in `benchmarks.ts` are deliberately separate from measured data. At the default preference, demanding work can reach Astra; at maximum preference/difficulty, Astra max is eligible. No published comparable Ultra data is available.
 
-The classifier is a full coding agent, not a sandboxed text endpoint. It is
-instructed not to solve, explain, or act on the task, but prompt text is
-untrusted input and a crafted task could try to make it take actions. Auto
-Router bounds this two ways:
+## BB integration
 
-- It always runs the classifier in a `project-default` environment, never the
-  environment or worktree the routed thread is headed for, so it cannot touch
-  the checkout you are working in.
-- It requests the least-privileged permission preset the provider advertises.
-  bb 0.39 has no read-only preset available to plugins, so that floor is
-  `accept-edits` — a determined injection could still edit files inside the
-  throwaway classification workspace.
+Requires Plugin SDK 0.4.104. Uses `useComposer().experimental_setSelection()` and `experimental_submit()` so native attachments, mentions, permissions, service tier, environment selection and error recovery remain owned by BB. Same-provider model changes preserve the thread through BB's normal picker mechanism. The router never clears, forks, stops or sends to another thread.
 
-## Install
+BB has no model-picker extension slot or model-rewriting dispatch hook. A small cleanup-owned content script inserts the header toggle and intercepts local Enter/send-button events. It targets `form[data-promptbox]`, `data-promptbox-submit-action` and `input[aria-label="Search models"]`, verified against the installed BB bundle. These selectors may change in future BB versions. Reload cleanup and input handling have DOM tests. CLI/API sends, queued-message editors and side chats are not automatically routed.
+
+Auto state is per composer in browser local storage. A selected manual model disables Auto for that thread in that window/profile. The latest route and reason are shown above the composer. Routing logs contain model/type/scores only, never prompts or classifier credentials.
+
+## Development and installation
 
 ```sh
 npm install
+npm test
+npm run typecheck
+bb plugin build .
 bb plugin install . --yes
 ```
 
-Open **Auto Router** in bb's sidebar, compose with bb's native new-thread
-composer, and submit. The extension preserves project, environment,
-permission, prompt, mentions, and attachments. It classifies the task, shows
-the score and selected agent, creates the real thread with an explicit
-provider/model/reasoning tuple, and opens it.
-
-Settings live under **Extensions → Plugins → Auto Router** and autosave. The
-same policy is available to agents and scripts:
+Optional bounded live classifier check (uses the existing Codex sign-in on one synthetic prompt):
 
 ```sh
-bb autorouter status
-bb autorouter config --frugality 25
-bb autorouter config --instructions "Route CSS-only work to Composer 2.5."
-bb autorouter route --prompt "Fix the header spacing"
+TURN_ROUTER_LIVE=1 npm test -- classifier-live.test.ts
 ```
 
-## Routing policy
-
-The classifier is instructed to return only compact JSON containing a 0–100
-difficulty score. `automatic` prefers a model with the lightest available
-reasoning. Cursor currently advertises `none` on individual model rows while
-its ACP launch contract accepts `low` as the minimum, so the extension
-reconciles to `low`. If classification fails, routing uses 50/100 and records a
-plugin warning.
-
-At the frugality endpoints, the capability curves are anchored to:
-
-| Difficulty | `$`                | `$$$`            |
-| ---------: | ------------------ | ---------------- |
-|          1 | GPT-5.6 Luna low   | Grok 4.5 medium  |
-|         50 | GPT-5.6 Luna high  | GPT-5.6 Sol high |
-|         75 | Grok 4.5 medium    | Fable 5 high     |
-|        100 | GPT-5.6 Sol medium | Fable 5 max      |
-
-Intermediate values interpolate between those anchors. Provider quota adds a
-penalty that grows each time remaining quota halves. A 1/100 task cannot reach
-the strongest endpoint and a 100/100 task cannot reach the weakest endpoint.
-
-The classifier may return a model override only when the user prompt requests
-that model or custom instructions explicitly route the matching task to it.
-The extension independently checks that the model exists and its name is
-grounded in one of those two sources before honoring the override.
-
-## Supported providers
-
-The provider, model, and CursorBench snapshot tables are compiled into the
-extension (`router.ts`, `benchmarks.ts`) and cover Codex, Claude Code, and
-Cursor as of v0.2.0. Models outside that table are still routable as fallbacks
-but do not get a capability or cost score, so the table needs a new release
-whenever a provider ships new models.
-
-## Current bb extension boundary
-
-bb 0.39 plugins cannot intercept the native root New Thread submit or insert
-synthetic thought rows into a core thread timeline. Auto Router therefore uses
-its own sidebar page containing bb's native `NewThreadComposer`; routing
-activity is shown on that page and in a toast. The created thread itself is a
-normal bb thread owned by the selected provider.
-
-## Development
-
-```sh
-npm test
-npm run typecheck
-npm run build
-bb plugin dev
-```
+The local plugin ID is `turn-router`, separate from `autorouter`. Disable the old plugin after this one is installed and healthy. Roll back with `bb plugin disable turn-router` and `bb plugin enable autorouter`. No BB application files are modified.

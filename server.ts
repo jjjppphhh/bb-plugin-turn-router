@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { BENCHMARK, chooseRoute, type Route } from './benchmarks';
 import { settingsSchema, defaults } from './settings';
-import { classifierPrompt, obviousRating, explicitSelection } from './router';
+import { obviousRating, explicitSelection } from './router';
 import { classify } from './classifier';
 import { compactContext,hasPriorAssistantResponse } from './context';
 const selectionSchema=z.object({model:z.string().max(150),reasoningLevel:z.string().max(30)}).strict();
@@ -21,7 +21,7 @@ export const rpcContract=defineRpcContract({
   openSideThread:{input:z.object({parentThreadId:z.string().min(1).max(200),text:z.string().min(1).max(30000),selection:selectionSchema}).strict(),output:z.object({threadId:z.string()}).strict()},
 });
 export default async function plugin(bb:BbPluginApi) {
-  const secrets=bb.settings.define({apiKey:{type:'string',label:'Optional classifier API key',secret:true}});
+  const secrets=bb.settings.define({apiKey:{type:'string',label:'External classifier API key',secret:true}});
   const settings=async()=>settingsSchema.parse(await bb.storage.kv.get('settings') ?? defaults);
   const cache=new Map<string,{expires:number;route:RoutedRoute}>();
   let activeClassifiers=0;
@@ -56,7 +56,7 @@ export default async function plugin(bb:BbPluginApi) {
       if (!rating) {
         if (activeClassifiers>=2) return retain('Classifier busy; keeping your current selection.');
         activeClassifiers++;
-        try { rating=await classify(classifierPrompt(input.text,context.text,input.attachments),config,(await secrets.get()).apiKey); }
+        try { rating=await classify({text:input.text,context:context.text,attachments:input.attachments},config,(await secrets.get()).apiKey); }
         catch { return retain('Classifier unavailable; keeping your current model and effort.'); }
         finally {activeClassifiers--;}
       }
@@ -68,7 +68,7 @@ export default async function plugin(bb:BbPluginApi) {
         ? {...delegated,reason:`${delegated.reason} Open separately to keep this thread's working context intact.`} : undefined;
       const routed:RoutedRoute=delegate?{...result,delegate}:result;
       if (cache.size>100) cache.clear();cache.set(key,{expires:Date.now()+30000,route:routed});
-      bb.log.info(`Route ${input.threadId??'new'}: ${rating.kind} ${rating.complexity}/100 -> ${result.model}/${result.reasoningLevel}`);
+      bb.log.info(`Route ${input.threadId??'new'} via ${config.classifier}: ${rating.kind} ${rating.complexity}/100 -> ${result.model}/${result.reasoningLevel}`);
       return routed;
     },
     openSideThread:async({parentThreadId,text,selection})=>{

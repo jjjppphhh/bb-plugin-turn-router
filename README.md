@@ -9,7 +9,6 @@ Routes each **new Codex turn** from BB's native composer. `Auto` is a choice at 
 - Rate the next message with a bounded excerpt of recent conversation and pending plan items; do not assume follow-ups are easy.
 - Obvious, narrowly defined text corrections skip inference.
 - Default classifier: GPT-5.6 Luna low through the local Codex CLI and existing sign-in. Runs ephemerally in an empty temporary directory with read-only sandbox, shell/unified execution, web, apps, plugins and subagents disabled; project instructions omitted. Temporary files are removed on completion or timeout. This uses the local server machine's Codex sign-in.
-- Optional TypeSafe Jev classifier uses one server-side System One request containing independent task-kind, complexity, uncertainty and consequence-of-error judgments. The official SDK and model are pinned (`@typesafe-ai/sdk` 0.6.0 and `jev-1.13.0`); the full probability response is validated before the most conservative confidence is used. Model selection remains deterministic plugin policy. Jev receives the draft plus a filtered recent excerpt, so enabling it sends that text to TypeSafe's US-hosted service. Standard retention applies unless the TypeSafe account provides zero-data-retention.
 - Optional compatible chat-completions classifier supports a user-selected model/provider, including DeepSeek or Kimi. Configure an HTTPS base URL and exact model in settings, and the API key in BB's secure setting. No tools are supplied. Enabling this sends draft text and recent conversation excerpts to that provider and may incur API charges.
 - Confidence below 0.65, classifier failure, unseen attachments, or active work preserves the current model/effort. No silent provider changes.
 - Match capability demand to measured options, then prefer lower benchmark cost. Complexity also limits effort (medium for simple tasks, high for routine tasks, xhigh/max for demanding work). Premium preference has less effect on simple tasks.
@@ -46,7 +45,5 @@ Optional bounded live classifier check (uses the existing Codex sign-in on one s
 ```sh
 TURN_ROUTER_LIVE=1 npm test -- classifier-live.test.ts
 ```
-
-To enable Jev, add a TypeSafe API key to the secure **External Classifier API Key** plugin setting, then choose **Jev · Fast Typed Decisions** in the Turn Router settings section. On missing credentials, malformed responses, low confidence, timeouts, or service errors, routing retains the current model and effort.
 
 The local plugin ID is `turn-router`, separate from `autorouter`. Disable the old plugin after this one is installed and healthy. Roll back with `bb plugin disable turn-router` and `bb plugin enable autorouter`. No BB application files are modified.

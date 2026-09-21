@@ -12,7 +12,7 @@ Routes each **new Codex turn** from BB's native composer. `Auto` is a choice at 
 - Optional compatible chat-completions classifier supports a user-selected model/provider, including DeepSeek or Kimi. Configure an HTTPS base URL and exact model in settings, and the API key in BB's secure setting. No tools are supplied. Enabling this sends draft text and recent conversation excerpts to that provider and may incur API charges.
 - Confidence below 0.65, classifier failure, unseen attachments, or active work preserves the current model/effort. No silent provider changes.
 - Match capability demand to measured options, then prefer lower benchmark cost. Complexity also limits effort (medium for simple tasks, high for routine tasks, xhigh/max for demanding work). Premium preference has less effect on simple tasks.
-- Keep an adequate current selection when potential savings are small. This is a heuristic for reducing model switches, not a claim of measured Codex cache savings.
+- The first substantive turn chooses a model family. Later turns keep that family and adjust reasoning effort; Auto only promotes to a stronger family when the current one cannot meet the rated capability demand. It never automatically downgrades a thread's model family.
 - Explicit `use Astra high` style requests take precedence. Ultra has no comparable published score and remains an explicit/manual choice. Unmeasured combinations are never assigned fabricated scores.
 
 ## Benchmark provenance

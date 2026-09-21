@@ -21,8 +21,10 @@ function mount(){return render(<form data-promptbox><div contentEditable data-te
 it('applies a same-provider selection before submitting through the native composer',async()=>{
  const ui=mount();fireEvent.click(ui.getByLabelText('Send'));await waitFor(()=>expect(mock.api.experimental_submit).toHaveBeenCalledOnce());
  expect(mock.route).toHaveBeenCalledWith('route',expect.objectContaining({threadId:'thread',text:'Change the button label.',providerId:'codex'}));
- expect(mock.api.experimental_setSelection.mock.calls).toEqual([[{}],[{model:'gpt-5.6-luna',reasoningLevel:'medium'}]]);
- expect(mock.api.experimental_submit.mock.invocationCallOrder[0]).toBeGreaterThan(mock.api.experimental_setSelection.mock.invocationCallOrder[1]);
+ expect(mock.api.experimental_setSelection.mock.calls).toContainEqual([{model:'gpt-5.6-luna',reasoningLevel:'medium'}]);
+ const applied=mock.api.experimental_setSelection.mock.calls.findIndex((call:any[])=>call[0]?.model==='gpt-5.6-luna');
+ expect(mock.api.experimental_submit.mock.invocationCallOrder[0]).toBeGreaterThan(mock.api.experimental_setSelection.mock.invocationCallOrder[applied]);
+ expect(ui.getByRole('status').textContent).toBe('Auto · 5.6-luna · medium');
  expect(mock.api.setInputLock).toHaveBeenLastCalledWith(false);
 });
 it('leaves the draft intact if classification fails',async()=>{
@@ -58,5 +60,5 @@ it('does not overwrite a manual selection made while classification is pending',
  fireEvent.click(ui.getByLabelText('Send'));await waitFor(()=>expect(mock.route).toHaveBeenCalled());
  fireEvent.click(ui.getByText('Luna'));finish({model:'gpt-6-astra',reasoningLevel:'max'});
  await waitFor(()=>expect(ui.getByRole('status').textContent).toContain('Manual selection kept'));
- expect(mock.api.experimental_setSelection.mock.calls).toEqual([[{}]]);expect(mock.api.experimental_submit).not.toHaveBeenCalled();
+ expect(mock.api.experimental_setSelection.mock.calls.some((call:any[])=>call[0]?.model==='gpt-6-astra')).toBe(false);expect(mock.api.experimental_submit).not.toHaveBeenCalled();
 });

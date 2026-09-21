@@ -5,7 +5,7 @@ import { BENCHMARK, chooseRoute, type Route } from './benchmarks';
 import { settingsSchema, defaults } from './settings';
 import { classifierPrompt, obviousRating, explicitSelection } from './router';
 import { classify } from './classifier';
-import { compactContext } from './context';
+import { compactContext,hasPriorAssistantResponse } from './context';
 const selectionSchema=z.object({model:z.string().max(150),reasoningLevel:z.string().max(30)}).strict();
 const routeSchema=selectionSchema.extend({reason:z.string(),source:z.string(),score:z.number().nullable(),estimatedCost:z.number().nullable()});
 export const inputSchema=z.object({
@@ -30,6 +30,7 @@ export default async function plugin(bb:BbPluginApi) {
       const retain=(reason:string):Route=>({...input.current,reason,source:'retained',score:null,estimatedCost:null});
       let environmentId=input.environmentId, hostId=input.hostId;
       let context={text:'',characters:0};
+      let established=false;
       if (input.threadId) {
         const thread=await bb.sdk.threads.get({threadId:input.threadId});
         if (thread.providerId!=='codex') throw new Error('Turn Router only changes models within Codex.');
@@ -37,6 +38,7 @@ export default async function plugin(bb:BbPluginApi) {
         environmentId=thread.environmentId;
         const timeline=await bb.sdk.threads.timeline({threadId:thread.id,segmentLimit:'8',includeNestedRows:'true'});
         context=compactContext(timeline.rows,thread.title ?? '',timeline.pendingTodos?.items.filter(t=>t.status!=='completed').map(t=>t.text));
+        established=hasPriorAssistantResponse(timeline.rows);
       }
       const scope=environmentId?{environmentId}:hostId?{hostId}:{};
       const models=await bb.sdk.providers.models({...scope,providerId:'codex'});
@@ -55,7 +57,7 @@ export default async function plugin(bb:BbPluginApi) {
         catch { return retain('Classifier unavailable; keeping your current model and effort.'); }
         finally {activeClassifiers--;}
       }
-      const result=chooseRoute({candidates,rating,premium:config.premium,current:input.current,contextCharacters:context.characters});
+      const result=chooseRoute({candidates,rating,premium:config.premium,current:input.current,contextCharacters:context.characters,established});
       if (cache.size>100) cache.clear();cache.set(key,{expires:Date.now()+30000,route:result});
       bb.log.info(`Route ${input.threadId??'new'}: ${rating.kind} ${rating.complexity}/100 -> ${result.model}/${result.reasoningLevel}`);
       return result;

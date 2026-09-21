@@ -9,6 +9,7 @@ export function RoutingControl(){
   const key=`turn-router:${view.scope.kind==='thread'?view.scope.threadId:'new'}`;
   const [enabled,setEnabled]=useState(()=>localStorage.getItem(key)!=='off');
   const [busy,setBusy]=useState(false),[notice,setNotice]=useState('');
+  const [selection,setSelection]=useState<{model:string;reasoningLevel:string}|null>(null);
   const anchor=useRef<HTMLSpanElement>(null),live=useRef({composer,view,enabled,busy}),epoch=useRef(0);
   live.current={composer,view,enabled,busy};
   useEffect(()=>{setEnabled(localStorage.getItem(key)!=='off');setNotice('');},[key]);
@@ -17,9 +18,15 @@ export function RoutingControl(){
     const form=anchor.current&&findComposer(anchor.current);if(!form)return;
     let mounted=true;
     const mode=(next:boolean)=>{live.current.enabled=next;setEnabled(next);localStorage.setItem(key,next?'on':'off');};
+    const refreshSelection=async()=>{
+      try { const selected=await live.current.composer.experimental_setSelection({});
+        if(mounted&&selected.model&&selected.reasoningLevel)setSelection({model:selected.model,reasoningLevel:selected.reasoningLevel});
+      } catch { /* The native picker will continue to show its own selection. */ }
+    };
+    void refreshSelection();
     const release=registerComposer(form,{
       enabled:()=>live.current.enabled,busy:()=>live.current.busy,running:()=>live.current.view.run.isRunning,
-      selectAuto:()=>{mode(true);setNotice('');},manual:()=>{mode(false);setNotice('');},
+      selectAuto:()=>{mode(true);setNotice('');void refreshSelection();},manual:()=>{mode(false);setNotice('');requestAnimationFrame(()=>void refreshSelection());},
       submit:async()=>{
         if(live.current.busy||live.current.view.draft.isEmpty)return;
         const api=live.current.composer,snapshot=live.current.view;
@@ -49,7 +56,7 @@ export function RoutingControl(){
           const applied=await api.experimental_setSelection({model:route.model,reasoningLevel:route.reasoningLevel as typeof selected.reasoningLevel});
           if(!valid())return;
           if(applied.model!==route.model||applied.reasoningLevel!==route.reasoningLevel)throw new Error('BB could not apply that route. Review the model picker and send again.');
-          setNotice(`${route.model.replace('gpt-','')} · ${route.reasoningLevel} · ${route.reason}`);
+          setSelection({model:route.model,reasoningLevel:route.reasoningLevel});setNotice('');
           api.setInputLock(false);
           await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
           if(!valid())return;
@@ -61,13 +68,14 @@ export function RoutingControl(){
     });
     return()=>{mounted=false;epoch.current++;release();};
   },[key]);
-  return <span ref={anchor} className="turn-router-status" role="status" aria-live="polite">{busy?'Choosing model and reasoning…':notice||(enabled?'Auto · model and reasoning adapt each turn':'')}</span>;
+  const selectedLabel=selection&&`${selection.model.replace('gpt-','')} · ${selection.reasoningLevel}`;
+  return <span ref={anchor} className="turn-router-status" role="status" aria-live="polite">{busy?'Choosing model and reasoning…':notice||(enabled?`Auto · ${selectedLabel??'model and reasoning adapt each turn'}`:selectedLabel??'')}</span>;
 }
 function RouterSettings(){
   const rpc=useRpc<typeof rpcContract>();const [value,setValue]=useState<Settings>(defaults),[status,setStatus]=useState('');
   useEffect(()=>{void rpc.call('getSettings').then(setValue).catch(()=>setStatus('Unable to load settings.'));},[]);
   return <form className="turn-router-settings" onSubmit={async e=>{e.preventDefault();try{setValue(await rpc.call('updateSettings',value));setStatus('Saved');}catch{setStatus('Could not save settings.');}}}>
-    <p>Codex only. Auto appears at the top right of the model dropdown. Manual model selection turns it off for that composer.</p>
+    <p>Codex only. Auto appears in the model picker. The first substantive turn chooses a model; later turns keep that family and adapt reasoning effort. Auto only promotes to a stronger family when the current one cannot meet the task.</p>
     <label>Classifier<select value={value.classifier} onChange={e=>setValue({...value,classifier:e.target.value as Settings['classifier']})}><option value="luna">Luna · existing Codex sign-in</option><option value="compatible-api">Compatible API · DeepSeek, Kimi or another provider</option></select></label>
     {value.classifier==='luna'?<label>Codex executable<input value={value.codexBinary} onChange={e=>setValue({...value,codexBinary:e.target.value})}/></label>:<><p>Your selected provider receives the draft and a short recent conversation excerpt. Add its key in the secure field above.</p><label>HTTPS API base URL<input value={value.apiBaseUrl} placeholder="https://provider.example/v1" onChange={e=>setValue({...value,apiBaseUrl:e.target.value})}/></label><label>Classifier model ID<input value={value.classifierModel} onChange={e=>setValue({...value,classifierModel:e.target.value})}/></label></>}
     <label>Capability preference: {value.premium}<input type="range" min="0" max="100" value={value.premium} onChange={e=>setValue({...value,premium:Number(e.target.value)})}/></label>

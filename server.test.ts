@@ -22,6 +22,12 @@ describe('server routing boundaries',()=>{
   const h=harness(),api=await h.start();h.bb.sdk.threads.get.mockResolvedValue({providerId:'codex',status:'active'});
   expect(await api.route(input)).toMatchObject(input.current);expect(classify).not.toHaveBeenCalled();
  });
+ it('keeps an established thread on its model family for a small follow-up',async()=>{
+  const h=harness(),api=await h.start();
+  h.bb.sdk.threads.timeline.mockResolvedValue({rows:[{kind:'conversation',role:'assistant',text:'The implementation is complete.'}],pendingTodos:null});
+  const result=await api.route({...input,text:'Fix the typo in that heading.'});
+  expect(result).toMatchObject({model:'gpt-5.6-sol'});
+ });
  it('fails back safely on timeout or missing authentication',async()=>{
   const api=await harness().start();vi.mocked(classify).mockRejectedValue(new Error('timeout'));expect(await api.route(input)).toMatchObject({...input.current,source:'retained'});
  });

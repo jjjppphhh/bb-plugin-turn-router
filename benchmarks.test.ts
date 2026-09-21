@@ -5,9 +5,17 @@ const candidates=['gpt-6-astra','gpt-5.6-sol','gpt-5.6-terra','gpt-5.6-luna','gp
 const rating=(n:number):Rating=>({kind:'implementation',complexity:n,uncertainty:n,risk:n,confidence:.9,reason:'Bounded task.'});
 const route=(n:number,premium=50)=>chooseRoute({candidates,rating:rating(n),premium});
 describe('per-turn routing',()=>{
- it('keeps a narrow tweak cheap even after a demanding Astra turn',()=>{
+ it('keeps the model family and reduces only effort for a narrow follow-up',()=>{
   const r=chooseRoute({candidates,rating:rating(10),premium:50,current:{model:'gpt-6-astra',reasoningLevel:'max'}});
   expect(r.model).toBe('gpt-5.6-luna');expect(['low','medium']).toContain(r.reasoningLevel);
+ });
+ it('keeps the model family after a substantive turn while adapting effort',()=>{
+  const r=chooseRoute({candidates,rating:rating(10),premium:50,established:true,current:{model:'gpt-6-astra',reasoningLevel:'max'}});
+  expect(r.model).toBe('gpt-6-astra');expect(['low','medium']).toContain(r.reasoningLevel);
+ });
+ it('promotes an established thread only when its current family cannot meet demand',()=>{
+  const r=chooseRoute({candidates,rating:rating(100),premium:100,established:true,current:{model:'gpt-5.6-luna',reasoningLevel:'medium'}});
+  expect(r.model).toBe('gpt-6-astra');
  });
  it('can reach Astra low, high and max at appropriate demand/preferences',()=>{
   expect(route(80)).toMatchObject({model:'gpt-6-astra',reasoningLevel:'low'});

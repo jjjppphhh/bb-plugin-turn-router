@@ -10,7 +10,7 @@ export type Rating = {
 };
 export type Route = Selection & { reason: string; source: string; score: number | null; estimatedCost: number | null };
 const effortOrder = (effort: string) => EFFORTS.indexOf(effort as Effort);
-export function chooseRoute(args: { candidates: Candidate[]; rating: Rating; premium: number; current?: Selection; contextCharacters?: number }): Route {
+export function chooseRoute(args: { candidates: Candidate[]; rating: Rating; premium: number; current?: Selection; contextCharacters?: number; established?: boolean }): Route {
   const { rating, current } = args;
   // Policy thresholds are explicit heuristics, not benchmark measurements.
   const demand = Math.max(rating.complexity, rating.uncertainty * .85, rating.risk);
@@ -33,6 +33,21 @@ export function chooseRoute(args: { candidates: Candidate[]; rating: Rating; pre
     adequate.length ? a.costPerTask-b.costPerTask || effortOrder(a.reasoningLevel)-effortOrder(b.reasoningLevel) || b.score-a.score
       : b.score-a.score || a.costPerTask-b.costPerTask || effortOrder(a.reasoningLevel)-effortOrder(b.reasoningLevel));
   let chosen = ranked[0]!;
+  // Once a thread has substantive history, preserve its model family. Varying
+  // reasoning effort is cheap; changing the model can alter interpretation of
+  // prior decisions and lose provider-side prompt-cache reuse. Promote only
+  // when no eligible effort in the current family meets the rated demand.
+  if (args.established && currentRow) {
+    const currentFamily = eligible.filter(row => row.family === current.model);
+    const currentAdequate = currentFamily.filter(row => row.score >= target - .5)
+      .sort((a,b) => a.costPerTask-b.costPerTask || effortOrder(a.reasoningLevel)-effortOrder(b.reasoningLevel));
+    if (currentAdequate.length) chosen = currentAdequate[0]!;
+    else {
+      const strongestCurrent = [...currentFamily].sort((a,b) => b.score-a.score || effortOrder(b.reasoningLevel)-effortOrder(a.reasoningLevel))[0];
+      const promotion = strongestCurrent && ranked.find(row => row.score > strongestCurrent.score);
+      chosen = promotion ?? strongestCurrent ?? currentRow;
+    }
+  }
   // Hysteresis: retain a sufficiently capable model if the saving is marginal.
   // Long histories increase the margin because switching can lose prompt-cache reuse.
   const savingThreshold = (args.contextCharacters ?? 0) > 24000 ? .5 : .2;

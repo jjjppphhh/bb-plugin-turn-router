@@ -95,12 +95,15 @@ export function bindComposer(form: HTMLFormElement,binding: ComposerBinding):()=
     stop(e);submit();
   };
   const manual=(e:Event)=>{
-    if(activeForm!==form||!popup||!binding.enabled())return;
+    if(!popup||!binding.enabled())return;
     const target=e.target instanceof Element?e.target:null;
     if(!target||target.closest('[data-turn-router-toggle]')||!popup.contains(target))return;
     const button=target.closest<HTMLElement>('button');
     if(button?.hasAttribute('disabled')||button?.getAttribute('aria-disabled')==='true')return;
-    const isModel=button?.matches('[id*="-opt-"], [role="option"], [role="menuitem"]')&&!button.hasAttribute('aria-expanded');
+    const excluded=button?.hasAttribute('aria-expanded')||button?.matches('[role="switch"], [title]');
+    // Picker markup varies across BB releases. A leaf button in the linked
+    // popup is a model choice unless it is a provider, switch, or submenu.
+    const isModel=!!button&&!excluded&&!button.closest('[aria-label="Reasoning"]');
     const isReasoning=button?.closest('[aria-label="Reasoning"]')||button?.matches('[role="radio"]');
     if(e instanceof KeyboardEvent){
       const search=target.closest('input[aria-label="Search models"]');

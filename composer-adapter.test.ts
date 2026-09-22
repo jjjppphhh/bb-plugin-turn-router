@@ -58,6 +58,17 @@ it('manual keyboard selections override Auto',async()=>{
  popup.querySelector('input')!.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));expect(f.state.on).toBe(false);
  f.state.on=true;popup.querySelector('[aria-label="Reasoning"] button')!.dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true}));expect(f.state.on).toBe(false);
 });
+it('records a manual model choice after navigation even with generic picker markup',async()=>{
+ const f=fixture(),popup=await openPicker(f.form);
+ // A stale global active-form marker must not prevent the linked popup from
+ // recording its own model selection.
+ const other=f.form.cloneNode(true) as HTMLFormElement;document.body.append(other);
+ const cleanupOther=bindComposer(other,{enabled:()=>true,busy:()=>false,running:()=>false,selectAuto:()=>{},manual:()=>{},submit:async()=>{}});
+ other.dispatchEvent(new Event('focusin',{bubbles:true}));
+ const generic=document.createElement('button');generic.textContent='Terra';popup.querySelector('.models')!.append(generic);
+ generic.click();expect(f.manual).toHaveBeenCalledOnce();expect(f.state.on).toBe(false);
+ cleanupOther();other.remove();
+});
 it('ignores unrelated dialogs and cleans up after closing the linked picker',async()=>{
  const f=fixture();f.form.dispatchEvent(new Event('focusin',{bubbles:true}));
  const unrelated=document.createElement('div');unrelated.innerHTML='<input aria-label="Search models">';document.body.append(unrelated);

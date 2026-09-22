@@ -10,6 +10,20 @@ export type Rating = {
 };
 export type Route = Selection & { reason: string; source: string; score: number | null; estimatedCost: number | null };
 const effortOrder = (effort: string) => EFFORTS.indexOf(effort as Effort);
+const coordinateEffort: Record<string,number> = {low:1,medium:2,high:3,xhigh:4,max:5,ultra:6};
+const familyCoordinate: Record<string,readonly [number,number,number]> = {
+  'gpt-5.6-luna':[5,6,1], 'gpt-5.6-terra':[5,6,2], 'gpt-5.6-sol':[5,6,3],
+  'gpt-5.5':[5,5,1], 'gpt-6-astra':[6,0,1],
+};
+export function capabilityCoordinate(selection:Selection):readonly [number,number,number,number]|null {
+  const family=familyCoordinate[selection.model],effort=coordinateEffort[selection.reasoningLevel];
+  return family&&effort ? [...family,effort] : null;
+}
+export function modelJumpDistance(from:Selection,to:Selection):number {
+  const a=capabilityCoordinate(from),b=capabilityCoordinate(to);
+  if(!a||!b||a[0]!==b[0]||a[1]!==b[1])return Number.POSITIVE_INFINITY;
+  return Math.abs((b[2]-a[2])*6+(b[3]-a[3]));
+}
 export function chooseRoute(args: { candidates: Candidate[]; rating: Rating; premium: number; current?: Selection; contextCharacters?: number; established?: boolean }): Route {
   const { rating, current } = args;
   // Policy thresholds are explicit heuristics, not benchmark measurements.
@@ -33,17 +47,14 @@ export function chooseRoute(args: { candidates: Candidate[]; rating: Rating; pre
     adequate.length ? a.costPerTask-b.costPerTask || effortOrder(a.reasoningLevel)-effortOrder(b.reasoningLevel) || b.score-a.score
       : b.score-a.score || a.costPerTask-b.costPerTask || effortOrder(a.reasoningLevel)-effortOrder(b.reasoningLevel));
   let chosen = ranked[0]!;
-  // Give the current family a modest head start even before a thread is fully
-  // established. Prefer its cheapest adequate effort when it is at most one
-  // step above the nominal effort cap and costs no more than 25% over the
-  // globally cheapest route. This avoids churn such as Luna High -> Terra Low
-  // without pinning an expensive default family to a tiny task.
-  if (!args.established && currentRow && chosen.family !== current.model) {
-    const nearbyCurrent = rows.filter(row => row.family === current.model
-        && row.score >= target - .5
-        && effortOrder(row.reasoningLevel) <= effortOrder(cap) + 1)
+  // Treat reasoning as the sub-delineator of a model family. Within one model
+  // generation, a family switch must clear five reasoning-sized steps. If it
+  // does not, use the cheapest adequate effort in the current family instead.
+  if (!args.established && currentRow && chosen.family !== current.model
+      && modelJumpDistance(current,{model:chosen.family,reasoningLevel:chosen.reasoningLevel}) <= 5) {
+    const nearbyCurrent = rows.filter(row => row.family === current.model && row.score >= target - .5)
       .sort((a,b) => a.costPerTask-b.costPerTask || effortOrder(a.reasoningLevel)-effortOrder(b.reasoningLevel))[0];
-    if (nearbyCurrent && nearbyCurrent.costPerTask <= chosen.costPerTask * 1.25) chosen = nearbyCurrent;
+    if (nearbyCurrent) chosen = nearbyCurrent;
   }
   // Once a thread has substantive history, preserve its model family. Varying
   // reasoning effort is cheap; changing the model can alter interpretation of

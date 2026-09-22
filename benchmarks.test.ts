@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {chooseRoute,BENCHMARK,type Rating} from './benchmarks';
+import {chooseRoute,BENCHMARK,capabilityCoordinate,modelJumpDistance,type Rating} from './benchmarks';
 import {parseRating,explicitSelection,obviousRating} from './router';
 const candidates=['gpt-6-astra','gpt-5.6-sol','gpt-5.6-terra','gpt-5.6-luna','gpt-5.5'].map(model=>({model,efforts:['low','medium','high','xhigh','max','ultra']}));
 const rating=(n:number):Rating=>({kind:'implementation',complexity:n,uncertainty:n,risk:n,confidence:.9,reason:'Bounded task.'});
@@ -16,6 +16,11 @@ describe('per-turn routing',()=>{
  it('keeps Luna instead of making a marginal switch to Terra',()=>{
   const r=chooseRoute({candidates,rating:rating(20),premium:50,current:{model:'gpt-5.6-luna',reasoningLevel:'high'}});
   expect(r).toMatchObject({model:'gpt-5.6-luna',reasoningLevel:'high'});
+ });
+ it('uses reasoning as the model-family sub-delineator',()=>{
+  expect(capabilityCoordinate({model:'gpt-5.6-sol',reasoningLevel:'ultra'})).toEqual([5,6,3,6]);
+  expect(modelJumpDistance({model:'gpt-5.6-luna',reasoningLevel:'high'},{model:'gpt-5.6-terra',reasoningLevel:'low'})).toBe(4);
+  expect(modelJumpDistance({model:'gpt-5.6-luna',reasoningLevel:'low'},{model:'gpt-5.6-terra',reasoningLevel:'low'})).toBe(6);
  });
  it('still changes family when the current option is disproportionately expensive',()=>{
   const r=chooseRoute({candidates,rating:rating(10),premium:50,current:{model:'gpt-6-astra',reasoningLevel:'max'}});

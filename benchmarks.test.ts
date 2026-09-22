@@ -13,6 +13,14 @@ describe('per-turn routing',()=>{
   const r=chooseRoute({candidates,rating:rating(10),premium:50,established:true,current:{model:'gpt-6-astra',reasoningLevel:'max'}});
   expect(r.model).toBe('gpt-6-astra');expect(['low','medium']).toContain(r.reasoningLevel);
  });
+ it('keeps Luna instead of making a marginal switch to Terra',()=>{
+  const r=chooseRoute({candidates,rating:rating(20),premium:50,current:{model:'gpt-5.6-luna',reasoningLevel:'high'}});
+  expect(r).toMatchObject({model:'gpt-5.6-luna',reasoningLevel:'high'});
+ });
+ it('still changes family when the current option is disproportionately expensive',()=>{
+  const r=chooseRoute({candidates,rating:rating(10),premium:50,current:{model:'gpt-6-astra',reasoningLevel:'max'}});
+  expect(r.model).toBe('gpt-5.6-luna');
+ });
  it('promotes an established thread only when its current family cannot meet demand',()=>{
   const r=chooseRoute({candidates,rating:rating(100),premium:100,established:true,current:{model:'gpt-5.6-luna',reasoningLevel:'medium'}});
   expect(r.model).toBe('gpt-6-astra');

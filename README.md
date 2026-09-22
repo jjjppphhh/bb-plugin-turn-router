@@ -13,6 +13,7 @@ Routes each **new Codex turn** from BB's native composer. `Auto` is a choice at 
 - Confidence below 0.65, classifier failure, unseen attachments, or active work preserves the current model/effort. No silent provider changes.
 - Match capability demand to measured options, then prefer lower benchmark cost. Complexity also limits effort (medium for simple tasks, high for routine tasks, xhigh/max for demanding work). Premium preference has less effect on simple tasks.
 - The first substantive turn chooses a model family. Later turns keep that family and adjust reasoning effort; Auto only promotes to a stronger family when the current one cannot meet the rated capability demand. It never automatically downgrades a thread's model family.
+- Before that family is established, a nearby adequate effort in the current family wins when it is within 25% of the cheapest route and no more than one reasoning step above the nominal cap. This prevents marginal model churn while preserving worthwhile savings.
 - A high-confidence bounded tweak or question may offer a lower-model side thread. The user must choose it explicitly; the visible child receives the draft plus a compact parent-context brief, and nothing is merged back automatically. Editing the draft or manually changing the picker invalidates the offer.
 - Explicit `use Astra high` style requests take precedence. Ultra has no comparable published score and remains an explicit/manual choice. Unmeasured combinations are never assigned fabricated scores.
 

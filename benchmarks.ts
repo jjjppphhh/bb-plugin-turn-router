@@ -33,6 +33,18 @@ export function chooseRoute(args: { candidates: Candidate[]; rating: Rating; pre
     adequate.length ? a.costPerTask-b.costPerTask || effortOrder(a.reasoningLevel)-effortOrder(b.reasoningLevel) || b.score-a.score
       : b.score-a.score || a.costPerTask-b.costPerTask || effortOrder(a.reasoningLevel)-effortOrder(b.reasoningLevel));
   let chosen = ranked[0]!;
+  // Give the current family a modest head start even before a thread is fully
+  // established. Prefer its cheapest adequate effort when it is at most one
+  // step above the nominal effort cap and costs no more than 25% over the
+  // globally cheapest route. This avoids churn such as Luna High -> Terra Low
+  // without pinning an expensive default family to a tiny task.
+  if (!args.established && currentRow && chosen.family !== current.model) {
+    const nearbyCurrent = rows.filter(row => row.family === current.model
+        && row.score >= target - .5
+        && effortOrder(row.reasoningLevel) <= effortOrder(cap) + 1)
+      .sort((a,b) => a.costPerTask-b.costPerTask || effortOrder(a.reasoningLevel)-effortOrder(b.reasoningLevel))[0];
+    if (nearbyCurrent && nearbyCurrent.costPerTask <= chosen.costPerTask * 1.25) chosen = nearbyCurrent;
+  }
   // Once a thread has substantive history, preserve its model family. Varying
   // reasoning effort is cheap; changing the model can alter interpretation of
   // prior decisions and lose provider-side prompt-cache reuse. Promote only

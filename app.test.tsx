@@ -53,6 +53,16 @@ it('persists manual selection across remount and only resumes routing after sele
  expect(localStorage.getItem('turn-router:thread')).toBe('on');
  fireEvent.click(remounted.getByLabelText('Send'));await waitFor(()=>expect(mock.api.experimental_submit).toHaveBeenCalledOnce());
 });
+it('keeps a manual selection when a new composer becomes its created thread',async()=>{
+ mock.view={...mock.view,scope:{kind:'new-thread'}};
+ const ui=mount();fireEvent.focus(ui.getByTestId('editor'));
+ await waitFor(()=>expect(ui.getByLabelText('Auto: choose model and reasoning for each turn')).toBeTruthy());
+ fireEvent.click(ui.getByText('Luna'));expect(localStorage.getItem('turn-router:new')).toBe('off');
+ mock.view={...mock.view,scope:{kind:'thread',threadId:'created-thread'}};ui.rerender(<form data-promptbox><div contentEditable data-testid="editor"/><button type="submit" data-promptbox-submit-action aria-label="Send">Send</button><button type="button" aria-label="Provider, model and reasoning" aria-expanded="true" aria-controls="test-picker">Model</button><div id="test-picker" role="dialog"><div><div>Model</div><button type="button" id="test-opt-0">Luna</button></div></div><RoutingControl/></form>);
+ fireEvent.focus(ui.getByTestId('editor'));
+ await waitFor(()=>expect(localStorage.getItem('turn-router:created-thread')).toBe('off'));
+ expect(ui.getByLabelText('Auto: choose model and reasoning for each turn').getAttribute('aria-pressed')).toBe('false');
+});
 it('does not overwrite a manual selection made while classification is pending',async()=>{
  let finish!:(value:any)=>void;mock.route.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
  const ui=mount();fireEvent.focus(ui.getByTestId('editor'));

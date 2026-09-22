@@ -26,9 +26,19 @@ export function RoutingControl(){
   const [selection,setSelection]=useState<{model:string;reasoningLevel:string}|null>(null);
   const [delegate,setDelegate]=useState<{model:string;reasoningLevel:string;reason:string;text:string;parentThreadId:string;main:{model:string;reasoningLevel:string}}|null>(null);
   const [sideBusy,setSideBusy]=useState(false);
-  const anchor=useRef<HTMLDivElement>(null),live=useRef({composer,view,enabled,busy}),epoch=useRef(0),sideAction=useRef(false);
+  const anchor=useRef<HTMLDivElement>(null),live=useRef({composer,view,enabled,busy}),epoch=useRef(0),sideAction=useRef(false),previousKey=useRef(key);
   live.current={composer,view,enabled,busy};
-  useEffect(()=>{setEnabled(localStorage.getItem(key)!=='off');setNotice('');setDelegate(null);},[key]);
+  useEffect(()=>{
+    const prior=previousKey.current;
+    let stored=localStorage.getItem(key);
+    // BB reuses this composer when a submitted new-thread draft becomes its
+    // real thread. Carry the user's Auto/manual choice into that new scope.
+    if(stored===null&&prior==='turn-router:new'&&key.startsWith('turn-router:')){
+      stored=localStorage.getItem(prior)??(live.current.enabled?'on':'off');
+      localStorage.setItem(key,stored);
+    }
+    previousKey.current=key;setEnabled(stored!=='off');setNotice('');setDelegate(null);
+  },[key]);
   useEffect(()=>{if(delegate&&view.draft.text!==delegate.text){setDelegate(null);setNotice('');}},[view.draft.text,delegate?.text]);
   useEffect(()=>{
     const generation=++epoch.current;
